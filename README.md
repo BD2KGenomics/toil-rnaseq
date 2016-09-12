@@ -5,11 +5,11 @@ This guide attempts to walk the user through running this pipeline from start to
 please contact John Vivian (jtvivian@gmail.com). If you find any errors or corrections please feel free to make a 
 pull request.  Feedback of any kind is appreciated.
 
-- [Dependencies](##Dependencies)
-- [Installation](##Installation)
-- [Inputs](##Inputs)
-- [Usage](##General-Usage)
-- [Methods](##Methods)
+- [Dependencies](#Dependencies)
+- [Installation](#Installation)
+- [Inputs](#Inputs)
+- [Usage](#General-Usage)
+- [Methods](#Methods)
 
 
 ## Overview
@@ -24,7 +24,7 @@ This pipeline produces a tarball (tar.gz) file for a given sample that contains 
 
 The output tarball is prepended with the UUID for the sample (e.g. UUID.tar.gz). 
 
-## Dependencies
+# Dependencies
 
 This pipeline has been tested on Ubuntu 14.04, but should also run on other unix based systems.  `apt-get` and `pip`
 often require `sudo` privilege, so if the below commands fail, try prepending `sudo`.  If you do not have `sudo` 
@@ -46,7 +46,7 @@ privileges you will need to build these tools from source, or bug a sysadmin abo
 
 This pipeline needs approximately 50G of RAM in order to run STAR alignment. 
 
-## Installation
+# Installation
 
 Toil-scripts is now pip installable! `pip install rna-seq` for a stable version. 
 
@@ -62,7 +62,7 @@ To decrease the chance of versioning conflicts, install rna-seq into a virtualen
 
 After installation, the pipeline can be executed by typing `toil-rnaseq` into the teriminal.
  
-## Inputs
+# Inputs
 
 The CGL RNA-seq pipeline requires input files in order to run. These files are hosted on Synapse and can 
 be downloaded after creating an account which takes about 1 minute and is free. 
@@ -90,7 +90,7 @@ All samples and inputs must be submitted as URLs with support for the following 
 Samples consisting of tarballs with fastq files inside _must_ follow the file name convention of ending in an 
 R1/R2 or \_1/\_2 followed by `.fastq.gz`, `.fastq`, `.fq.gz` or `.fq.`.
 
-## General Usage
+# General Usage
 
 Type `toil-rnaseq` to get basic help menu and instructions
  
