@@ -5,11 +5,11 @@ This guide attempts to walk the user through running this pipeline from start to
 please contact John Vivian (jtvivian@gmail.com). If you find any errors or corrections please feel free to make a 
 pull request.  Feedback of any kind is appreciated.
 
-- [Dependencies](#Dependencies)
-- [Installation](#Installation)
-- [Inputs](#Inputs)
-- [Usage](#General-Usage)
-- [Methods](#Methods)
+- [Dependencies](##Dependencies)
+- [Installation](##Installation)
+- [Inputs](##Inputs)
+- [Usage](##General-Usage)
+- [Methods](##Methods)
 
 
 ## Overview
