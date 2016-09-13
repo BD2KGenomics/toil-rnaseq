@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 
 kwargs = dict(
-    name='RNA-seq',
+    name='toil-rnaseq',
     version=version,
     description="UC Santa Cruz Computational Genomics Lab's Toil-based RNA-seq pipeline",
     author='UCSC Computational Genomics Lab',
@@ -14,7 +14,7 @@ kwargs = dict(
     package_dir={'': 'src'},
     packages=find_packages('src'),
     entry_points={
-        'console_scripts': ['toil-rnaseq = rna_seq.rnaseq_cgl_pipeline:main']})
+        'console_scripts': ['toil-rnaseq = toil_rnaseq.rnaseq_cgl_pipeline:main']})
 
 
 setup(**kwargs)
