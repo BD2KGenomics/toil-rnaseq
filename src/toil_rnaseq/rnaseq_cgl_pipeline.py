@@ -16,7 +16,7 @@ import re
 import yaml
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
-from toil.job import Job
+from toil.job import Job, PromisedRequirement
 from toil_lib import require, UserError
 from toil_lib.files import copy_files
 from toil_lib.jobs import map_job
@@ -77,11 +77,12 @@ def preprocessing_declaration(job, config, tar_id, r1_id, r2_id):
     :param str r1_id: FileStoreID of sample read 1 (or None)
     :param str r2_id: FileStoreID of sample read 2 (or None)
     """
-    disk = '2G' if config.ci_test else '100G'
     if tar_id:
         job.fileStore.logToMaster('Processing sample tar and queueing CutAdapt for: ' + config.uuid)
+        disk = PromisedRequirement(lambda x: 3 * x.size, tar_id)
         preprocessing_output = job.addChildJobFn(process_sample, config, input_tar=tar_id, disk=disk).rv()
     else:
+        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
         preprocessing_output = job.addChildJobFn(process_sample, config, input_r1=r1_id, input_r2=r2_id,
                                                  gz=config.gz, disk=disk).rv()
     job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
@@ -98,7 +99,7 @@ def pipeline_declaration(job, config, preprocessing_output):
     """
     r1_id, r2_id = preprocessing_output
     kallisto_output, rsem_output, fastqc_output = None, None, None
-    disk = '2G' if config.ci_test else '40G'
+    disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
     if config.fastqc:
         job.fileStore.logToMaster('Queueing FastQC job for: ')
         fastqc_output = job.addChildJobFn(run_fastqc, r1_id, r2_id, cores=2, disk=disk).rv()
@@ -125,8 +126,9 @@ def star_alignment(job, config, r1_id, r2_id):
     """
     job.fileStore.logToMaster('Queueing RSEM job for: ' + config.uuid)
     mem = '2G' if config.ci_test else '40G'
+    disk = '2G' if config.ci_test else '100G'
     star = job.addChildJobFn(run_star, r1_id, r2_id, star_index_url=config.star_index,
-                             wiggle=config.wiggle, cores=config.cores, memory=mem).rv()
+                             wiggle=config.wiggle, cores=config.cores, memory=mem, disk=disk).rv()
     return job.addFollowOnJobFn(rsem_quantification, config, star).rv()
 
 
@@ -142,7 +144,6 @@ def rsem_quantification(job, config, star_output):
     """
     work_dir = job.fileStore.getLocalTempDir()
     cores = min(16, config.cores)
-    disk = '2G' if config.ci_test else '40G'
     if config.wiggle:
         transcriptome_id, sorted_id, wiggle_id = star_output
         wiggle_path = os.path.join(work_dir, config.uuid + '.wiggle.bg')
@@ -162,6 +163,7 @@ def rsem_quantification(job, config, star_output):
         else:
             copy_files(file_paths=[bam_path], output_dir=config.output_dir)
     # Declare RSEM and RSEM post-process jobs
+    disk = PromisedRequirement(lambda x: 2 * x.size, transcriptome_id)
     rsem_output = job.wrapJobFn(run_rsem, transcriptome_id, config.rsem_ref, paired=config.paired,
                                 cores=cores, disk=disk)
     rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, config.uuid, rsem_output.rv(0), rsem_output.rv(1))
@@ -227,13 +229,14 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         p2.wait()
         processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
         processed_r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fastq'))
+        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), processed_r1, processed_r2)
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
         with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
             subprocess.check_call([command] + fastqs, stdout=f)
         processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
+        disk = PromisedRequirement(lambda x: 2 * x.size, processed_r1)
     # Start cutadapt step
-    disk = '2G' if config.ci_test else '125G'
     if config.cutadapt:
         return job.addChildJobFn(run_cutadapt, processed_r1, processed_r2, config.fwd_3pr_adapter,
                                  config.rev_3pr_adapter, disk=disk).rv()
