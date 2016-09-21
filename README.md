@@ -48,17 +48,18 @@ This pipeline needs approximately 50G of RAM in order to run STAR alignment.
 
 # Installation
 
-Toil-scripts is now pip installable! `pip install rna-seq` for a stable version. 
+The CGL RNA-seq pipeline is now pip installable! `pip install toil-rnaseq` for a stable version or
+`pip install --pre toil-rnaseq` for the current development version.
 
 If there is an existing, system-wide installation of Toil, as is the case when using CGCloud, 
 the `pip install toil` step should be skipped and virtualenv should be invoked with `--system-site-packages`. 
 This way the existing Toil installation will be available inside the virtualenv.
 
-To decrease the chance of versioning conflicts, install rna-seq into a virtualenv: 
+To decrease the chance of versioning conflicts, install toil-rnaseq into a virtualenv: 
 
-- `virtualenv ~/rna-seq` 
-- `source ~/rna-seq/bin/activate`
-- `pip install rna-seq`
+- `virtualenv ~/toil-rnaseq` 
+- `source ~/toil-rnaseq/bin/activate`
+- `pip install toil-rnaseq`
 
 After installation, the pipeline can be executed by typing `toil-rnaseq` into the teriminal.
  
