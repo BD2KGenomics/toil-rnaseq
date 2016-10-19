@@ -1,6 +1,9 @@
-from version import version, required_versions
 from setuptools import find_packages, setup
 
+version = '1.1.0a1'
+
+required_versions = {'toil-lib': '==1.1.0a1.dev100',
+                     'pyyaml': '==3.11'}
 
 kwargs = dict(
     name='toil-rnaseq',

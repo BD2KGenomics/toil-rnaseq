@@ -149,7 +149,7 @@ def rsem_quantification(job, config, star_output):
         wiggle_path = os.path.join(work_dir, config.uuid + '.wiggle.bg')
         job.fileStore.readGlobalFile(wiggle_id, wiggle_path)
         if urlparse(config.output_dir).scheme == 's3':
-            s3am_upload(fpath=wiggle_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
+            s3am_upload(job, fpath=wiggle_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
         else:
             copy_files(file_paths=[wiggle_path], output_dir=config.output_dir)
     else:
@@ -159,7 +159,7 @@ def rsem_quantification(job, config, star_output):
         bam_path = os.path.join(work_dir, config.uuid + '.sorted.bam')
         job.fileStore.readGlobalFile(sorted_id, bam_path)
         if urlparse(config.output_dir).scheme == 's3' and config.ssec:
-            s3am_upload(fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
+            s3am_upload(job, fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
         else:
             copy_files(file_paths=[bam_path], output_dir=config.output_dir)
     # Declare RSEM and RSEM post-process jobs
@@ -289,7 +289,7 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
     # Move to output location
     if urlparse(config.output_dir).scheme == 's3':
         job.fileStore.logToMaster('Uploading {} to S3: {}'.format(config.uuid, config.output_dir))
-        s3am_upload(fpath=out_tar, s3_dir=config.output_dir, num_cores=config.cores)
+        s3am_upload(job, fpath=out_tar, s3_dir=config.output_dir, num_cores=config.cores)
     else:
         job.fileStore.logToMaster('Moving {} to output dir: {}'.format(config.uuid, config.output_dir))
         mkdir_p(config.output_dir)
