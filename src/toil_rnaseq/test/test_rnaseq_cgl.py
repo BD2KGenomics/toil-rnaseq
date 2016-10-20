@@ -69,6 +69,7 @@ class RNASeqCGLTest(TestCase):
             prefix = self.output_dir.path[1:]
             for i in range(1 if num_samples is None else num_samples):
                 output_file = self._sample_name(None if num_samples is None else i) + '.tar.gz'
+                output_file = 'FAIL.' + output_file  # This flag is added by bamQC
                 key = bucket.get_key(posixpath.join(prefix, output_file), validate=True)
                 # FIXME: We may want to validate the output a bit more
                 self.assertTrue(key.size > 0)
@@ -99,6 +100,7 @@ class RNASeqCGLTest(TestCase):
                     fwd-3pr-adapter: AGATCGGAAGAG
                     rev-3pr-adapter: AGATCGGAAGAG
                     ci-test: true
+                    bamqc: true
                     """[1:]).format(output_dir=self.output_dir.geturl(),
                                     input_dir=self.input_dir.geturl()))
         return path
