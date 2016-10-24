@@ -4,6 +4,7 @@ from __future__ import print_function
 import argparse
 import multiprocessing
 import os
+import re
 import subprocess
 import sys
 import tarfile
@@ -12,11 +13,11 @@ from contextlib import closing
 from subprocess import PIPE
 from urlparse import urlparse
 
-import re
 import yaml
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
 from toil.job import Job, PromisedRequirement
+from toil_lib import flatten
 from toil_lib import require, UserError
 from toil_lib.files import copy_files
 from toil_lib.jobs import map_job
@@ -25,6 +26,8 @@ from toil_lib.tools.aligners import run_star
 from toil_lib.tools.preprocessing import run_cutadapt
 from toil_lib.tools.quantifiers import run_kallisto, run_rsem, run_rsem_postprocess
 from toil_lib.urls import download_url_job, s3am_upload
+
+from qc import run_bam_qc
 
 schemes = ('http', 'file', 's3', 'ftp', 'gnos')
 
@@ -88,7 +91,6 @@ def preprocessing_declaration(job, config, tar_id, r1_id, r2_id):
     job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
 
 
-# FIXME: Replace hardcoded disk requirments with promised requirement once available
 def pipeline_declaration(job, config, preprocessing_output):
     """
     Define pipeline edges that use the fastq files
@@ -129,7 +131,29 @@ def star_alignment(job, config, r1_id, r2_id):
     disk = '2G' if config.ci_test else '100G'
     star = job.addChildJobFn(run_star, r1_id, r2_id, star_index_url=config.star_index,
                              wiggle=config.wiggle, cores=config.cores, memory=mem, disk=disk).rv()
-    return job.addFollowOnJobFn(rsem_quantification, config, star, disk=disk).rv()
+    rsem = job.addFollowOnJobFn(rsem_quantification, config, star, disk=disk).rv()
+    if config.bamqc:
+        return rsem, job.addFollowOnJobFn(bam_qc, config, star, disk=disk).rv()
+    else:
+        return rsem
+
+
+def bam_qc(job, config, star_output):
+    """
+    Unpack STAR bam and run BAM QC
+
+    :param JobFunctionWrappingJob job: passed automatically by Toil
+    :param Namespace config: Argparse Namespace object containing argument inputs
+    :param tuple(str, str, str, str)|tuple(str, str, str) star_output:
+    :return: FileStoreID results from bam_qc
+    :rtype: str
+    """
+    cores = min(4, config.cores)
+    if config.wiggle:
+        transcriptome_id, sorted_id, wiggle_id, log_id = star_output
+    else:
+        transcriptome_id, sorted_id, log_id = star_output
+    return job.addChildJobFn(run_bam_qc, sorted_id, config, cores=cores).rv()
 
 
 def rsem_quantification(job, config, star_output):
@@ -145,7 +169,7 @@ def rsem_quantification(job, config, star_output):
     work_dir = job.fileStore.getLocalTempDir()
     cores = min(16, config.cores)
     if config.wiggle:
-        transcriptome_id, sorted_id, wiggle_id = star_output
+        transcriptome_id, sorted_id, wiggle_id, log_id = flatten(star_output)
         wiggle_path = os.path.join(work_dir, config.uuid + '.wiggle.bg')
         job.fileStore.readGlobalFile(wiggle_id, wiggle_path)
         if urlparse(config.output_dir).scheme == 's3':
@@ -153,14 +177,14 @@ def rsem_quantification(job, config, star_output):
         else:
             copy_files(file_paths=[wiggle_path], output_dir=config.output_dir)
     else:
-        transcriptome_id, sorted_id = star_output
+        transcriptome_id, sorted_id, log_id = star_output
     # Save sorted bam if flag is selected
-    if config.save_bam:
+    if config.save_bam and not config.bamqc:  # if config.bamqc is selected, bam is being saved in run_bam_qc
         bam_path = os.path.join(work_dir, config.uuid + '.sorted.bam')
         job.fileStore.readGlobalFile(sorted_id, bam_path)
         if urlparse(config.output_dir).scheme == 's3' and config.ssec:
             s3am_upload(fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
-        else:
+        elif urlparse(config.output_dir).scheme != 's3':
             copy_files(file_paths=[bam_path], output_dir=config.output_dir)
     # Declare RSEM and RSEM post-process jobs
     disk = PromisedRequirement(lambda x: 2 * x.size, transcriptome_id)
@@ -229,13 +253,13 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         p2.wait()
         processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
         processed_r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fastq'))
-        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), processed_r1, processed_r2)
+        disk = PromisedRequirement(lambda y, z: 2 * (y.size + z.size), processed_r1, processed_r2)
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
         with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
             subprocess.check_call([command] + fastqs, stdout=f)
         processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
-        disk = PromisedRequirement(lambda x: 2 * x.size, processed_r1)
+        disk = PromisedRequirement(lambda y: 2 * y.size, processed_r1)
     # Start cutadapt step
     if config.cutadapt:
         return job.addChildJobFn(run_cutadapt, processed_r1, processed_r2, config.fwd_3pr_adapter,
@@ -256,10 +280,16 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
     """
     job.fileStore.logToMaster('Consolidating output: {}'.format(config.uuid))
     work_dir = job.fileStore.getLocalTempDir()
+    config.uuid = 'SINGLE-END.' + config.uuid if not config.paired else config.uuid
     # Retrieve output file paths to consolidate
-    rsem_tar, hugo_tar, kallisto_tar, fastqc_tar = None, None, None, None
+    rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar = None, None, None, None, None
     if rsem_output:
-        rsem_id, hugo_id = rsem_output
+        if config.bamqc:
+            rsem_id, hugo_id, fail_flag, bamqc_id = flatten(rsem_output)
+            bamqc_tar = job.fileStore.readGlobalFile(bamqc_id, os.path.join(work_dir, 'bamqc.tar.gz'))
+            config.uuid = 'FAIL.' + config.uuid if fail_flag else config.uuid
+        else:
+            rsem_id, hugo_id = rsem_output
         rsem_tar = job.fileStore.readGlobalFile(rsem_id, os.path.join(work_dir, 'rsem.tar.gz'))
         hugo_tar = job.fileStore.readGlobalFile(hugo_id, os.path.join(work_dir, 'rsem_hugo.tar.gz'))
     if kallisto_output:
@@ -267,11 +297,9 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
     if fastqc_output:
         fastqc_tar = job.fileStore.readGlobalFile(fastqc_output, os.path.join(work_dir, 'fastqc.tar.gz'))
     # I/O
-    if not config.paired:
-        config.uuid = 'SINGLE-END.{}'.format(config.uuid)
     out_tar = os.path.join(work_dir, config.uuid + '.tar.gz')
     # Consolidate separate tarballs into one as streams (avoids unnecessary untaring)
-    tar_list = [x for x in [rsem_tar, hugo_tar, kallisto_tar, fastqc_tar] if x is not None]
+    tar_list = [x for x in [rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar] if x is not None]
     with tarfile.open(os.path.join(work_dir, out_tar), 'w:gz') as f_out:
         for tar in tar_list:
             with tarfile.open(tar, 'r') as f_in:
@@ -283,8 +311,10 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
                             tarinfo.name = os.path.join(config.uuid, 'RSEM', 'Hugo', os.path.basename(tarinfo.name))
                         elif tar == kallisto_tar:
                             tarinfo.name = os.path.join(config.uuid, 'Kallisto', os.path.basename(tarinfo.name))
-                        else:
-                            tarinfo.name = os.path.join(config.uuid, 'QC', os.path.basename(tarinfo.name))
+                        elif tar == bamqc_tar:
+                            tarinfo.name = os.path.join(config.uuid, 'QC', 'bamQC', os.path.basename(tarinfo.name))
+                        elif tar == fastqc_tar:
+                            tarinfo.name = os.path.join(config.uuid, 'QC', 'fastQC', os.path.basename(tarinfo.name))
                         f_out.addfile(tarinfo, fileobj=f_in_file)
     # Move to output location
     if urlparse(config.output_dir).scheme == 's3':
@@ -360,6 +390,9 @@ def generate_config():
 
         # Optional: If true, will run FastQC and include QC in sample output
         fastqc: true
+
+        # Optional: If true, will run BAM QC (as specified by California Kid's Cancer Comparison)
+        bamqc:
 
         # Adapter sequence to trim. Defaults set for Illumina
         fwd-3pr-adapter: AGATCGGAAGAG
