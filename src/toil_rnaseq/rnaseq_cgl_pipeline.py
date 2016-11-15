@@ -13,7 +13,7 @@ from contextlib import closing
 from subprocess import PIPE
 from urlparse import urlparse
 
-import yaml
+from ruamel import yaml
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
 from toil.job import Job, PromisedRequirement
