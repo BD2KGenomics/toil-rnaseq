@@ -42,10 +42,23 @@ help:
 	@echo "$$help"
 
 
+SHELL=bash
 python=python2.7
 pip=pip2.7
 tests=src
 extras=
+
+pipeline_ver:=$(shell python -c "from __future__ import print_function; import version; print(version.version, end='')")
+sdist_name:=toil-rnaseq-$(pipeline_ver).tar.gz
+quay_path=quay.io/ucsc_cgl/rnaseq-cgl-pipeline
+docker_versions = 1.12.3 1.11.2 1.10.3 1.9.1 1.8.3 1.7.1 1.6.2
+
+commit_id:=$(shell git log --pretty=oneline -n 1 -- $(pwd) | cut -f1 -d " ")
+dirty:=$(shell (git diff --exit-code && git diff --cached --exit-code) > /dev/null || printf "%s" -DIRTY)
+pipeline_tag=$(protocol_ver)-$(pipeline_ver)
+short_commit_tag=$(pipeline_tag)-$(shell echo $(commit_id) | head -c 7)$(dirty)
+long_commit_tag=$(pipeline_tag)-$(commit_id)$(dirty)
+
 
 green=\033[0;32m
 normal=\033[0m
@@ -59,14 +72,48 @@ clean_develop: check_venv
 	- rm -rf src/*.egg-info
 
 
-sdist: check_venv
+docker: $(foreach ver,$(docker_versions),docker/builds/$(ver))
+docker/builds/%: ver_base=$(basename $(notdir $(@)))
+docker/builds/%: protocol_ver=$(ver_base).x
+docker/builds/%: true_ver=$(filter $(ver_base).%, $(docker_versions))
+docker/builds/%: build_path=docker/builds/$(protocol_ver)
+docker/builds/%: docker/Dockerfile.py docker/wrapper.py sdist
+	mkdir -p $(build_path)
+	cp docker/wrapper.py $(build_path)/
+	cp dist/$(sdist_name) $(build_path)/
+	$(python) docker/Dockerfile.py --docker-version $(true_ver) > $(build_path)/Dockerfile
+	cd $(build_path) && docker build --tag $(quay_path):$(long_commit_tag) .
+	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(short_commit_tag)
+	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(pipeline_tag)
+	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(protocol_ver)
+clean_docker:
+	- rm -r docker/builds
+
+docker_push: $(foreach ver,$(docker_versions),docker_push_$(ver))
+docker_push_%: docker/builds/%
+	docker push $(quay_path):$(long_commit_tag)
+	docker push $(quay_path):$(short_commit_tag)
+	docker push $(quay_path):$(pipeline_tag)
+	docker push $(quay_path):$(protocol_ver)
+
+
+sdist: check_venv dist/$(sdist_name)
+dist/$(sdist_name): check_venv
+	@test -f dist/$(sdist_name) && mv dist/$(sdist_name) dist/$(sdist_name).old || true
 	$(python) setup.py sdist
+	@test -f dist/$(sdist_name).old \
+	    && ( cmp -s <(tar -xOzf dist/$(sdist_name)) <(tar -xOzf dist/$(sdist_name).old) \
+	         && mv dist/$(sdist_name).old dist/$(sdist_name) \
+	         && printf "$(green)No significant changes to sdist, reinstating backup.$(normal)" \
+	         || rm dist/$(sdist_name).old ) \
+	    || true
 clean_sdist:
 	- rm -rf dist
 
 
 test: check_venv check_build_reqs
 	PATH=$$PATH:${PWD}/bin $(python) -m pytest -vv --junitxml test-report.xml $(tests)
+
 
 integration-test: check_venv check_build_reqs sdist
 	TOIL_TEST_INTEGRATIVE=True $(python) run_tests.py integration-test $(tests)
@@ -86,7 +133,7 @@ clean_pypi:
 	- rm -rf build/
 
 
-clean: clean_develop clean_sdist clean_pypi clean_prepare
+clean: clean_develop clean_sdist clean_pypi clean_prepare clean_docker
 
 
 check_build_reqs:
@@ -103,6 +150,7 @@ prepare: check_venv
 clean_prepare: check_venv
 	rm -rf bin s3am
 	- $(pip) uninstall -y pytest toil
+
 
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
