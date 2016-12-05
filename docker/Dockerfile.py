@@ -20,8 +20,8 @@ print textwrap.dedent("""
 
     RUN apt-get update \
         && apt-get install -y {dependencies}
-    RUN wget https://get.docker.com/builds/Linux/x86_64/docker-{docker_version}.tgz \
-             -O /usr/local/bin/docker \
+    RUN curl https://get.docker.com/builds/Linux/x86_64/docker-{docker_version}.tgz \
+             | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/
         && chmod u+x /usr/local/bin/docker
     RUN pip install setuptools --upgrade
     RUN pip install toil==3.5.0a1.dev274
