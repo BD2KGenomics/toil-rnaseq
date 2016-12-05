@@ -83,18 +83,17 @@ docker/builds/%: docker/Dockerfile.py docker/wrapper.py sdist
 	cp dist/$(sdist_name) $(build_path)/
 	$(python) docker/Dockerfile.py --docker-version $(true_ver) > $(build_path)/Dockerfile
 	cd $(build_path) && docker build --tag $(quay_path):$(long_commit_tag) .
-	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(short_commit_tag)
-	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(pipeline_tag)
-	docker tag $(quay_path):$(long_commit_tag) $(quay_path):$(protocol_ver)
+	for tag in $(short_commit_tag) $(pipeline_tag) $(protocol_ver); do \
+        docker tag $(quay_path):$(long_commit_tag) $(quay_path):$tag; \
+    done
 clean_docker:
 	- rm -r docker/builds
 
 docker_push: $(foreach ver,$(docker_versions),docker_push_$(ver))
 docker_push_%: docker/builds/%
-	docker push $(quay_path):$(long_commit_tag)
-	docker push $(quay_path):$(short_commit_tag)
-	docker push $(quay_path):$(pipeline_tag)
-	docker push $(quay_path):$(protocol_ver)
+	for tag in $(long_commit_tag) $(short_commit_tag) $(pipeline_tag) $(protocol_ver); do \
+        docker push $(quay_path):$tag; \
+    done
 
 
 sdist: check_venv dist/$(sdist_name)
