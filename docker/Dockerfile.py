@@ -24,7 +24,7 @@ print textwrap.dedent("""
              | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
              && chmod u+x /usr/local/bin/docker
     RUN pip install setuptools --upgrade
-    RUN pip install toil==3.5.0a1.dev274
+    RUN pip install toil==3.3.4
 
     COPY wrapper.py /opt/pipeline/
     COPY toil-rnaseq-*.tar.gz /opt/pipeline/sdist.tar.gz

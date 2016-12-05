@@ -48,7 +48,6 @@ class RnaseqPipelineWrapper(AbstractPipelineWrapper):
     def _extend_argument_parser(self, parser):
         parser.add_argument('--samples', nargs='+', required=True,
                             help='Absolute path(s) to sample tarballs.')
-        Job.Runner.addToilOptions(parser)
 
     def _extend_pipeline_command(self, command, args):
         if args.cores is not None:
