@@ -14,6 +14,6 @@
 
 version = '1.1.0a1'
 
-required_versions = {'toil': '==3.3.4',
+required_versions = {'toil': '==3.5.0a1.dev296',
                      'toil-lib': '==1.2.0a1.dev126',
                      'ruamel.yaml': '==0.12.14'}
