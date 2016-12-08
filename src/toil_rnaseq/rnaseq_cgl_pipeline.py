@@ -70,7 +70,7 @@ def download_sample(job, sample, config):
     job.addFollowOnJobFn(preprocessing_declaration, config, tar_id, r1_id, r2_id)
 
 
-def preprocessing_declaration(job, config, tar_id, r1_id, r2_id):
+def preprocessing_declaration(job, config, tar_id=None, r1_id=None, r2_id=None):
     """
     Define preprocessing steps
 
@@ -85,7 +85,10 @@ def preprocessing_declaration(job, config, tar_id, r1_id, r2_id):
         disk = PromisedRequirement(lambda x: 3 * x.size, tar_id)
         preprocessing_output = job.addChildJobFn(process_sample, config, input_tar=tar_id, disk=disk).rv()
     else:
-        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+        if r2_id:
+            disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+        else:
+            disk = PromisedRequirement(lambda x: 2 * x.size, r1_id)
         preprocessing_output = job.addChildJobFn(process_sample, config, input_r1=r1_id, input_r2=r2_id,
                                                  gz=config.gz, disk=disk).rv()
     job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
@@ -101,7 +104,10 @@ def pipeline_declaration(job, config, preprocessing_output):
     """
     r1_id, r2_id = preprocessing_output
     kallisto_output, rsem_output, fastqc_output = None, None, None
-    disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+    if r2_id:
+        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+    else:
+        disk = PromisedRequirement(lambda x: 2 * x.size, r1_id)
     if config.fastqc:
         job.fileStore.logToMaster('Queueing FastQC job for: ')
         fastqc_output = job.addChildJobFn(run_fastqc, r1_id, r2_id, cores=2, disk=disk).rv()
@@ -115,13 +121,13 @@ def pipeline_declaration(job, config, preprocessing_output):
     job.addFollowOnJobFn(consolidate_output, config, kallisto_output, rsem_output, fastqc_output)
 
 
-def star_alignment(job, config, r1_id, r2_id):
+def star_alignment(job, config, r1_id, r2_id=None):
     """
     Logic for running STAR
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
-    :param str r1_id: FileStoreID of sample read 1 (or None)
+    :param str r1_id: FileStoreID of sample read 1
     :param str r2_id: FileStoreID of sample read 2 (or None)
     :return: FileStoreID results from RSEM
     :rtype: str
