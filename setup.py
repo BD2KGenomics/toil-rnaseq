@@ -25,8 +25,7 @@ print("\n\n"
       "If you want to run this Toil-based pipeline on a cluster in a cloud, please install Toil "
       "with the appropriate extras. For example, To install AWS/EC2 support for example, run "
       "\n\n"
-      "pip install toil[aws,mesos]%s"
+      "pip install toil[aws,mesos]"
       "\n\n"
       "on every EC2 instance. Refer to Toil's documentation at http://toil.readthedocs.io/en/latest/installation.html "
-      "for more information."
-      % required_versions['toil'])
+      "for more information.")
