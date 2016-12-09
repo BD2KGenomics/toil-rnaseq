@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version = '3.0.0'
+version = '3.0.1a1'
 
 required_versions = {'toil-lib': '==1.1.0',
                      'pyyaml': '==3.11'}
