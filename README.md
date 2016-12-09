@@ -40,8 +40,9 @@ privileges you will need to build these tools from source, or bug a sysadmin abo
 
     1. Toil         pip install toil
     2. S3AM         pip install --pre s3am (optional, needed for uploading output to S3)
-    
-    
+
+Toil must be installed on the system *prior* to installing `toil-rnaseq`. 
+
 #### System Dependencies
 
 This pipeline needs approximately 50G of RAM in order to run STAR alignment. 
