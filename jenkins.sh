@@ -4,6 +4,7 @@
 rm -rf .env
 virtualenv --never-download .env
 . .env/bin/activate
+pip install toil==3.3.5
 
 # Prepare directory for temp files
 TMPDIR=/mnt/ephemeral/tmp
