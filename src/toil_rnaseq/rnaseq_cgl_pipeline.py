@@ -563,6 +563,8 @@ def main():
         for input in [x for x in [config.kallisto_index, config.star_index, config.rsem_ref] if x]:
             require(urlparse(input).scheme in schemes,
                     'Input in config must have the appropriate URL prefix: {}'.format(schemes))
+        if not config.output_dir.endswith('/'):
+            config.output_dir += '/'
         # Program checks
         for program in ['curl', 'docker']:
             require(next(which(program), None), program + ' must be installed on every node.'.format(program))
