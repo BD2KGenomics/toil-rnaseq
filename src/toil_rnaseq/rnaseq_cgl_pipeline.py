@@ -306,7 +306,7 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
     out_tar = os.path.join(work_dir, config.uuid + '.tar.gz')
     # Consolidate separate tarballs into one as streams (avoids unnecessary untaring)
     tar_list = [x for x in [rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar] if x is not None]
-    with tarfile.open(os.path.join(work_dir, out_tar), 'w:gz') as f_out:
+    with tarfile.open(out_tar, 'w:gz') as f_out:
         for tar in tar_list:
             with tarfile.open(tar, 'r') as f_in:
                 for tarinfo in f_in:
