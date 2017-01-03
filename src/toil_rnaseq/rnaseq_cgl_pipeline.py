@@ -204,7 +204,7 @@ def rsem_quantification(job, config, star_output):
 
 def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz=None):
     """
-    Converts sample.tar(.gz) into a fastq pair or single fastq if single-ended.
+    Converts sample.tar(.gz) into a fastq pair (or single fastq if single-ended.)
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
@@ -212,7 +212,7 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
     :param str input_r1: fileStoreID of r1 fastq (if applicable)
     :param str input_r2: fileStoreID of r2 fastq (if applicable)
     :param bool gz: If True, unzips the r1/r2 files
-    :return: FileStoreID from Cutadapt
+    :return: FileStoreID from Cutadapt or from fastqs directly if pipeline was run without Cutadapt option
     :rtype: str
     """
     job.fileStore.logToMaster('Processing sample: {}'.format(config.uuid))
@@ -235,19 +235,19 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         fastqs.extend([os.path.join(root, x) for x in files])
     if config.paired:
         r1, r2 = [], []
-        # Pattern convention: Look for R1/R2 or _1/_2 at the end of files named .fastq.gz, .fastq, .fq.gz, or .fq
-        pattern = re.compile('(?:^|[._-])R?([12])(\\.fastq(\\.gz)?|\\.fq(\\.gz)?)$')
+        # Pattern convention: Look for "R1" / "R2" in the filename, or "_1" / "_2" before the extension
+        pattern = re.compile('(?:^|[._-])(R[12]|[12]\.f)')
         for fastq in sorted(fastqs):
             match = pattern.search(os.path.basename(fastq))
             if not match:
                 raise UserError('FASTQ file name fails to meet required convention for paired reads '
                                 '(see documentation). ' + fastq)
-            elif match.group(1) == '1':
+            elif '1' in match.group():
                 r1.append(fastq)
-            elif match.group(1) == '2':
+            elif '2' in match.group():
                 r2.append(fastq)
             else:
-                assert False, match.group(1)
+                assert False, match.group()
         require(len(r1) == len(r2), 'Check fastq names, uneven number of pairs found.\nr1: {}\nr2: {}'.format(r1, r2))
         # Concatenate fastqs
         command = 'zcat' if r1[0].endswith('.gz') and r2[0].endswith('.gz') else 'cat'
