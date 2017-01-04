@@ -127,16 +127,16 @@ check_running_on_jenkins:
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
 clean_docker:
-    - cd docker && make clean
+	-cd docker && make clean
 
 test_docker:
-    cd docker && make test
+	cd docker && make test
 
 docker:
-    cd docker && make
+	cd docker && make
 
 push_docker:
-    cd docker && make push
+	cd docker && make push
 
 .PHONY: help \
 		prepare \
