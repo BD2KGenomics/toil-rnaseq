@@ -18,7 +18,7 @@ doc: |
 
     *Inputs*
 
-    This pipeline is designed to take one or more fastq file pairs representing RNA-Seq analysis that have been tarred in a single tar file.
+    This pipeline is designed to take one or more fastq file pairs,one or more fastq single end reads, or one or more fastq file pairs in a tar file representing RNA-Seq analysis.
 
     *Outputs*
 
@@ -26,6 +26,9 @@ doc: |
     ```
     RSEM: TPM, FPKM, counts and raw counts (parsed from RSEM output)
     Kallisto: abundance.tsv, abundance.h5, and a JSON of run information
+
+    If save-wiggle is true the pipeline produces a .wiggle.bg file
+    If save-bam is true the pipeline produces a .bam file
     ```
 
     *Feedback*
@@ -40,7 +43,7 @@ dct:creator:
 
 requirements:
   - class: DockerRequirement
-    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.0.1--1.12.3"
+    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.0.0--1.12.3"
 
 hints:
   - class: ResourceRequirement
@@ -50,14 +53,32 @@ hints:
     description: "The process requires at least 16G of RAM and we recommend 500GB or storage."
 
 inputs:
-  samples:
-    doc: "Absolute path(s) to sample tarballs or paired FASTQ files. FASTQ pairs are comma delimited and each pair is space delimited. Ex: sample1,sample2 sample3,sample4"
+  #if no tar files are going to be input 
+  #then use 
+  # "sample-tar": [],
+  #in the parameterized JSON file 
+  sample-tar:
+    doc: "Absolute path(s) to sample tarballs"
     type:
       type: array
-      items: File
-    inputBinding:
-      prefix: --samples
+      items: ["null", File]
+      inputBinding:
+        prefix: --sample-tar
 
+  sample-single:
+    doc: "Absolute path(s) to unpaired FASTQ files. FASTQ files are comma delimited. Ex: sample1,sample2,sample3,sample4"
+    type: File[]?
+    inputBinding:
+      prefix: --sample-single
+      itemSeparator: "," 
+
+  sample-paired:
+    doc: "Absolute path(s) to paired FASTQ files. FASTQ pairs are comma delimited and each pair is in the order R1,R2,R1,R2.... Ex: sample1,sample2,sample3,sample4"
+    type: File[]?
+    inputBinding:
+      prefix: --sample-paired
+      itemSeparator: "," 
+ 
   star:
     type: File
     doc: "Absolute path to STAR index tarball."
@@ -141,6 +162,10 @@ outputs:
   wiggle_files:
     type:
       type: array
+#is this needed if there are no wiggle file
+#outputs, i.e. save-wiggle is false?
+#similar to sample-tar above? 
+#      items: ["null", File]
       items: File
     outputBinding:
       glob: '*.wiggle.bg'
@@ -149,6 +174,10 @@ outputs:
   bam_files:
     type:
       type: array
+#is this needed if there are no BAM file
+#outputs, i.e. save-bam is false?
+#similar to sample-tar above? 
+#      items: ["null", File]
       items: File
     outputBinding:
       glob: '*.bam'
