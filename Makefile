@@ -86,7 +86,7 @@ clean_pypi:
 	- rm -rf build/
 
 
-clean: clean_develop clean_sdist clean_pypi clean_prepare
+clean: clean_develop clean_sdist clean_pypi clean_prepare[
 
 
 check_build_reqs:

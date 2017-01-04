@@ -1,0 +1,29 @@
+FROM ubuntu:14.04
+
+# File Author / Maintainer
+MAINTAINER John Vivian <jtvivian@gmail.com>
+
+RUN apt-get update && apt-get install -y \
+    git \
+    python-dev \
+    python-pip \
+    wget \
+    curl \
+    apt-transport-https \
+    ca-certificates
+
+# Get the Docker binary
+RUN curl https://get.docker.com/builds/Linux/x86_64/docker-DOCKERVER.tgz \
+         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
+         && chmod u+x /usr/local/bin/docker
+# Install Toil
+RUN pip install toil==3.3.4
+
+# Install toil-rnaseq
+RUN pip install toil-rnaseq==3.0.1
+
+COPY wrapper.py /opt/rnaseq-pipeline/
+COPY README.md /opt/rnaseq-pipeline/
+
+ENTRYPOINT ["python", "/opt/rnaseq-pipeline/wrapper.py"]
+CMD ["--help"]
