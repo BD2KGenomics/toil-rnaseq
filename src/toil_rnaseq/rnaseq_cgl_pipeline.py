@@ -251,20 +251,29 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         require(len(r1) == len(r2), 'Check fastq names, uneven number of pairs found.\nr1: {}\nr2: {}'.format(r1, r2))
         # Concatenate fastqs
         command = 'zcat' if r1[0].endswith('.gz') and r2[0].endswith('.gz') else 'cat'
-        with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f1:
-            p1 = subprocess.Popen([command] + r1, stdout=f1)
-        with open(os.path.join(work_dir, 'R2.fastq'), 'w') as f2:
-            p2 = subprocess.Popen([command] + r2, stdout=f2)
-        p1.wait()
-        p2.wait()
-        processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
-        processed_r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fastq'))
+
+        # If sample is already a single R1 / R2 fastq
+        if command == 'cat' and input_r1 and input_r2:
+            processed_r1 = input_r1
+            processed_r2 = input_r2
+        else:
+            with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f1:
+                p1 = subprocess.Popen([command] + r1, stdout=f1)
+            with open(os.path.join(work_dir, 'R2.fastq'), 'w') as f2:
+                p2 = subprocess.Popen([command] + r2, stdout=f2)
+            p1.wait()
+            p2.wait()
+            processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
+            processed_r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fastq'))
         disk = PromisedRequirement(lambda y, z: 2 * (y.size + z.size), processed_r1, processed_r2)
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
-        with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
-            subprocess.check_call([command] + fastqs, stdout=f)
-        processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
+        if command == 'cat' and input_r1:
+            processed_r1 = input_r1
+        else:
+            with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
+                subprocess.check_call([command] + fastqs, stdout=f)
+            processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
         disk = PromisedRequirement(lambda y: 2 * y.size, processed_r1)
     # Start cutadapt step
     if config.cutadapt:
