@@ -86,7 +86,7 @@ clean_pypi:
 	- rm -rf build/
 
 
-clean: clean_develop clean_sdist clean_pypi clean_prepare[
+clean: clean_develop clean_sdist clean_pypi clean_prepare
 
 
 check_build_reqs:
@@ -126,6 +126,17 @@ check_running_on_jenkins:
 	@test -n "$$BUILD_NUMBER" \
 		|| ( echo "$(red)This target should only be invoked on Jenkins.$(normal)" ; false )
 
+clean_docker:
+    - cd docker && make clean
+
+test_docker:
+    cd docker && make test
+
+docker:
+    cd docker && make
+
+push_docker:
+    cd docker && make push
 
 .PHONY: help \
 		prepare \
