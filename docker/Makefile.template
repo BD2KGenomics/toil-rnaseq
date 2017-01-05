@@ -1,7 +1,7 @@
 # Definitions
 build_tool = runtime-container.DONE
 name = quay.io/ucsc_cgl/rnaseq-cgl-pipeline
-git_commit ?= $(shell git log --pretty=oneline -n 1 -- ../../rnaseq-cgl-pipeline | cut -f1 -d " ")
+git_commit ?= $(shell git log --pretty=oneline -n 1 | cut -f1 -d " ")
 short_tag = 3.0.1--DOCKERVER
 long_tag = ${short_tag}--${git_commit}
 
