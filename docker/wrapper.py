@@ -39,6 +39,7 @@ def call_pipeline(mount, args):
     if args.cores:
         command.append('--maxCores={}'.format(args.cores))
     path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, args.sample_paired, work_dir)
+    exit(1)
     command.append('--manifest=' + path_to_manifest)
     try:
         log.info('Docker Comand: ' + str(command))
@@ -61,9 +62,9 @@ def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir):
     if sample_tars:
         sample_tars = map(fileURL, sample_tars)
     if sample_pairs:
-        sample_pairs = map(formatPairs, sample_pairs)
+        sample_pairs = map(lambda sample: formatPairs(sample, workdir), sample_pairs)
     if sample_singles:
-        sample_singles = map(formatSingles, sample_singles)
+        sample_singles = map(lambda sample: formatSingles(sample, workdir), sample_singles)
     log.info('Path to manifest: ' + workdir)
     with open(path, 'w') as f:
         for samples in (sample_pairs, sample_tars, sample_singles):
@@ -96,7 +97,7 @@ def getSampleName(sample):
     return name
 
 
-def formatPairs(sample_pairs):
+def formatPairs(sample_pairs, work_mount):
     def formatPair(name):
         pairList = [name, name]
         for index in range(0, len(pairList)):
@@ -114,13 +115,13 @@ def formatPairs(sample_pairs):
 
     sample_pairs = sample_pairs.split(',')
     assert len(sample_pairs) % 2 == 0
-    outputName = sample_pairs[0]
+    outputName = os.path.join(work_mount, os.path.basename(sample_pairs[0]))
     outputFiles = formatPair(outputName)
     catFiles(outputFiles[0], sample_pairs[::2])
     catFiles(outputFiles[1], sample_pairs[1::2])
     return fileURL(outputFiles[0]) + ',' + fileURL(outputFiles[1])
 
-def formatSingles(sample_singles):
+def formatSingles(sample_singles, work_mount):
     def formatSingle(single):
         for ending in ('.fastq.gz', '.fastq', '.fq.gz', '.fq'):
             if single.endswith(ending):
@@ -128,7 +129,7 @@ def formatSingles(sample_singles):
                 baseName += 'merged'
                 return baseName + ending
     sample_singles = sample_singles.split(',')
-    output = formatSingle(sample_singles[0])
+    output = formatSingle(os.path.join(work_mount, os.path.basename(sample_singles[0])))
     catFiles(output, sample_singles)
     return fileURL(output)
 
@@ -237,19 +238,19 @@ def main():
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
-    # Get name of most recent running container. If socket is mounted, should be this one.
-    try:
-        name = subprocess.check_output(['docker', 'ps', '--format', '{{.Names}}']).split('\n')[0]
-    except subprocess.CalledProcessError as e:
-        raise RuntimeError('No container detected, ensure Docker is being run with: '
-                           '"-v /var/run/docker.sock:/var/run/docker.sock" as an argument. \n\n{}'.format(e.message))
-    # Get name of mounted volume
-    blob = json.loads(subprocess.check_output(['docker', 'inspect', name]))
-    mounts = blob[0]['Mounts']
-    # Ensure docker.sock is mounted correctly
-    sock_mount = [x['Source'] == x['Destination'] for x in mounts if 'docker.sock' in x['Source']]
-    require(len(sock_mount) == 1, 'Missing socket mount. Requires the following: '
-                                  'docker run -v /var/run/docker.sock:/var/run/docker.sock')
+    # # Get name of most recent running container. If socket is mounted, should be this one.
+    # try:
+    #     name = subprocess.check_output(['docker', 'ps', '--format', '{{.Names}}']).split('\n')[0]
+    # except subprocess.CalledProcessError as e:
+    #     raise RuntimeError('No container detected, ensure Docker is being run with: '
+    #                        '"-v /var/run/docker.sock:/var/run/docker.sock" as an argument. \n\n{}'.format(e.message))
+    # # Get name of mounted volume
+    # blob = json.loads(subprocess.check_output(['docker', 'inspect', name]))
+    # mounts = blob[0]['Mounts']
+    # # Ensure docker.sock is mounted correctly
+    # sock_mount = [x['Source'] == x['Destination'] for x in mounts if 'docker.sock' in x['Source']]
+    # require(len(sock_mount) == 1, 'Missing socket mount. Requires the following: '
+    #                               'docker run -v /var/run/docker.sock:/var/run/docker.sock')
     work_mount = args.work_mount
     for samples in [args.sample_tar, args.sample_paired, args.sample_single]:
         if not samples:
