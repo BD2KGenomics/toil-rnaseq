@@ -135,7 +135,7 @@ test_docker:
 docker:
 	cd docker && make
 
-push_docker:
+push_docker: docker
 	cd docker && make push
 
 .PHONY: help \
