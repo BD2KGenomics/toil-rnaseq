@@ -148,4 +148,8 @@ push_docker:
 		check_venv \
 		check_clean_working_copy \
 		check_running_on_jenkins \
+		docker \
+		push_docker \
+		clean_docker \
+		test_docker \
 		check_build_reqs
