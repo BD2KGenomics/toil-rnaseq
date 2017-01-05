@@ -39,7 +39,6 @@ def call_pipeline(mount, args):
     if args.cores:
         command.append('--maxCores={}'.format(args.cores))
     path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, args.sample_paired, work_dir)
-    exit(1)
     command.append('--manifest=' + path_to_manifest)
     try:
         log.info('Docker Comand: ' + str(command))
@@ -238,19 +237,19 @@ def main():
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
-    # # Get name of most recent running container. If socket is mounted, should be this one.
-    # try:
-    #     name = subprocess.check_output(['docker', 'ps', '--format', '{{.Names}}']).split('\n')[0]
-    # except subprocess.CalledProcessError as e:
-    #     raise RuntimeError('No container detected, ensure Docker is being run with: '
-    #                        '"-v /var/run/docker.sock:/var/run/docker.sock" as an argument. \n\n{}'.format(e.message))
-    # # Get name of mounted volume
-    # blob = json.loads(subprocess.check_output(['docker', 'inspect', name]))
-    # mounts = blob[0]['Mounts']
-    # # Ensure docker.sock is mounted correctly
-    # sock_mount = [x['Source'] == x['Destination'] for x in mounts if 'docker.sock' in x['Source']]
-    # require(len(sock_mount) == 1, 'Missing socket mount. Requires the following: '
-    #                               'docker run -v /var/run/docker.sock:/var/run/docker.sock')
+    # Get name of most recent running container. If socket is mounted, should be this one.
+    try:
+        name = subprocess.check_output(['docker', 'ps', '--format', '{{.Names}}']).split('\n')[0]
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError('No container detected, ensure Docker is being run with: '
+                           '"-v /var/run/docker.sock:/var/run/docker.sock" as an argument. \n\n{}'.format(e.message))
+    # Get name of mounted volume
+    blob = json.loads(subprocess.check_output(['docker', 'inspect', name]))
+    mounts = blob[0]['Mounts']
+    # Ensure docker.sock is mounted correctly
+    sock_mount = [x['Source'] == x['Destination'] for x in mounts if 'docker.sock' in x['Source']]
+    require(len(sock_mount) == 1, 'Missing socket mount. Requires the following: '
+                                  'docker run -v /var/run/docker.sock:/var/run/docker.sock')
     work_mount = args.work_mount
     for samples in [args.sample_tar, args.sample_paired, args.sample_single]:
         if not samples:
