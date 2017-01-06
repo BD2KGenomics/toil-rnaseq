@@ -28,9 +28,14 @@ def run_bam_qc(job, aligned_bam_id, config):
     # Tar Output files
     output_names = ['readDist.txt', 'rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf',
                     'rnaAligned.out.md.sorted.geneBodyCoverage.txt']
+    if os.path.exists(os.path.join(work_dir, 'readDist.txt_PASS_qc.txt')):
+        output_names.append('readDist.txt_PASS_qc.txt')
+        fail_flag = False
+    else:
+        output_names.append('readDist.txt_FAIL_qc.txt')
+        fail_flag = True
     output_files = [os.path.join(work_dir, x) for x in output_names]
-    prefix = config.uuid + '.'
-    tarball_files(tar_name='bam_qc.tar.gz', file_paths=output_files, output_dir=work_dir, prefix=prefix)
+    tarball_files(tar_name='bam_qc.tar.gz', file_paths=output_files, output_dir=work_dir)
 
     # Save output BAM
     if config.save_bam:
@@ -39,8 +44,5 @@ def run_bam_qc(job, aligned_bam_id, config):
             s3am_upload(fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
         elif urlparse(config.output_dir).scheme != 's3':
             copy_files(file_paths=[bam_path], output_dir=config.output_dir)
-
-    # Check for FAIL flag
-    fail_flag = True if os.path.exists(os.path.join(work_dir, 'readDist.txt_FAIL_qc.txt')) else False
 
     return fail_flag, job.fileStore.writeGlobalFile(os.path.join(work_dir, 'bam_qc.tar.gz'))
