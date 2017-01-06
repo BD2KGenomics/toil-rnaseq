@@ -8,3 +8,5 @@ __pycache__
 .env/
 /s3am/
 /bin/s3am
+*.DONE
+*.docker
