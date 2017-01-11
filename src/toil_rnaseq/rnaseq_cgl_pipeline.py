@@ -19,7 +19,7 @@ from bd2k.util.processes import which
 from toil.job import Job, PromisedRequirement
 from toil_lib import flatten
 from toil_lib import require, UserError
-from toil_lib.files import copy_files
+from toil_lib.files import copy_files, tarball_files
 from toil_lib.jobs import map_job
 from toil_lib.tools.QC import run_fastqc
 from toil_lib.tools.aligners import run_star
@@ -103,7 +103,7 @@ def pipeline_declaration(job, config, preprocessing_output):
     :param tuple(str, str, bool) preprocessing_output: R1 FileStoreID, R2 FileStoreID, Improper Pairing (True/False)
     """
     r1_id, r2_id = preprocessing_output
-    kallisto_output, rsem_output, fastqc_output = None, None, None
+    kallisto_output, rsem_star_output, fastqc_output = None, None, None
     if r2_id:
         disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
     else:
@@ -117,8 +117,8 @@ def pipeline_declaration(job, config, preprocessing_output):
                                             cores=config.cores, disk=disk).rv()
     if config.star_index and config.rsem_ref:
         job.fileStore.logToMaster('Queueing STAR alignment for: ' + config.uuid)
-        rsem_output = job.addChildJobFn(star_alignment, config, r1_id, r2_id).rv()
-    job.addFollowOnJobFn(consolidate_output, config, kallisto_output, rsem_output, fastqc_output)
+        rsem_star_output = job.addChildJobFn(star_alignment, config, r1_id, r2_id).rv()
+    job.addFollowOnJobFn(consolidate_output, config, kallisto_output, rsem_star_output, fastqc_output)
 
 
 def star_alignment(job, config, r1_id, r2_id=None):
@@ -199,7 +199,12 @@ def rsem_quantification(job, config, star_output):
     rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, config.uuid, rsem_output.rv(0), rsem_output.rv(1))
     job.addChild(rsem_output)
     rsem_output.addChild(rsem_postprocess)
-    return rsem_postprocess.rv()
+    # Save STAR log
+    log_path = os.path.join(work_dir, 'Log.final.out')
+    job.fileStore.readGlobalFile(log_id, log_path)
+    tarball_files(tar_name='star.tar.gz', file_paths=[log_path], output_dir=work_dir)
+    star_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'star.tar.gz'))
+    return rsem_postprocess.rv(), star_id
 
 
 def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz=None):
@@ -283,30 +288,31 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         return processed_r1, processed_r2
 
 
-def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output):
+def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_output):
     """
     Combines the contents of the outputs into one tarball and places in output directory or s3
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
     :param str kallisto_output: FileStoreID for Kallisto output
-    :param tuple(str, str) rsem_output: FileStoreIDs for RSEM output
+    :param tuple(str, str) rsem_star_output: FileStoreIDs for RSEM and STAR output
     :param str fastqc_output: FileStoreID for FastQC output
     """
     job.fileStore.logToMaster('Consolidating output: {}'.format(config.uuid))
     work_dir = job.fileStore.getLocalTempDir()
     config.uuid = 'SINGLE-END.' + config.uuid if not config.paired else config.uuid
     # Retrieve output file paths to consolidate
-    rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar = None, None, None, None, None
-    if rsem_output:
+    rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar, star_tar = None, None, None, None, None, None
+    if rsem_star_output:
         if config.bamqc:
-            rsem_id, hugo_id, fail_flag, bamqc_id = flatten(rsem_output)
+            rsem_id, hugo_id, star_id, fail_flag, bamqc_id = flatten(rsem_star_output)
             bamqc_tar = job.fileStore.readGlobalFile(bamqc_id, os.path.join(work_dir, 'bamqc.tar.gz'))
             config.uuid = 'FAIL.' + config.uuid if fail_flag else config.uuid
         else:
-            rsem_id, hugo_id = rsem_output
+            rsem_id, hugo_id, star_id = rsem_star_output
         rsem_tar = job.fileStore.readGlobalFile(rsem_id, os.path.join(work_dir, 'rsem.tar.gz'))
         hugo_tar = job.fileStore.readGlobalFile(hugo_id, os.path.join(work_dir, 'rsem_hugo.tar.gz'))
+        star_tar = job.fileStore.readGlobalFile(star_id, os.path.join(work_dir, 'star.tar.gz'))
     if kallisto_output:
         kallisto_tar = job.fileStore.readGlobalFile(kallisto_output, os.path.join(work_dir, 'kallisto.tar.gz'))
     if fastqc_output:
@@ -314,7 +320,7 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
     # I/O
     out_tar = os.path.join(work_dir, config.uuid + '.tar.gz')
     # Consolidate separate tarballs into one as streams (avoids unnecessary untaring)
-    tar_list = [x for x in [rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar] if x is not None]
+    tar_list = [x for x in [rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar, star_tar] if x is not None]
     with tarfile.open(out_tar, 'w:gz') as f_out:
         for tar in tar_list:
             with tarfile.open(tar, 'r') as f_in:
@@ -330,6 +336,8 @@ def consolidate_output(job, config, kallisto_output, rsem_output, fastqc_output)
                             tarinfo.name = os.path.join(config.uuid, 'QC', 'bamQC', os.path.basename(tarinfo.name))
                         elif tar == fastqc_tar:
                             tarinfo.name = os.path.join(config.uuid, 'QC', 'fastQC', os.path.basename(tarinfo.name))
+                        elif tar == star_tar:
+                            tarinfo.name = os.path.join(config.uuid, 'QC', 'STAR', os.path.basename(tarinfo.name))
                         f_out.addfile(tarinfo, fileobj=f_in_file)
     # Move to output location
     if urlparse(config.output_dir).scheme == 's3':
