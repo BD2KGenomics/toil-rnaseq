@@ -16,7 +16,7 @@ from urlparse import urlparse
 import yaml
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
-from toil.job import Job, PromisedRequirement
+from toil.job import Job
 from toil_lib import flatten
 from toil_lib import require, UserError
 from toil_lib.files import copy_files, tarball_files
@@ -82,13 +82,13 @@ def preprocessing_declaration(job, config, tar_id=None, r1_id=None, r2_id=None):
     """
     if tar_id:
         job.fileStore.logToMaster('Processing sample tar and queueing CutAdapt for: ' + config.uuid)
-        disk = PromisedRequirement(lambda x: 3 * x.size, tar_id)
+        disk = 5 * tar_id.size
         preprocessing_output = job.addChildJobFn(process_sample, config, input_tar=tar_id, disk=disk).rv()
     else:
         if r2_id:
-            disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+            disk = 3 * (r1_id.size + r2_id.size)
         else:
-            disk = PromisedRequirement(lambda x: 2 * x.size, r1_id)
+            disk = 3 * r1_id.size
         preprocessing_output = job.addChildJobFn(process_sample, config, input_r1=r1_id, input_r2=r2_id,
                                                  gz=config.gz, disk=disk).rv()
     job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
@@ -105,9 +105,9 @@ def pipeline_declaration(job, config, preprocessing_output):
     r1_id, r2_id = preprocessing_output
     kallisto_output, rsem_star_output, fastqc_output = None, None, None
     if r2_id:
-        disk = PromisedRequirement(lambda x, y: 2 * (x.size + y.size), r1_id, r2_id)
+        disk = 2 * (r1_id.size + r2_id.size)
     else:
-        disk = PromisedRequirement(lambda x: 2 * x.size, r1_id)
+        disk = 2 * r1_id.size
     if config.fastqc:
         job.fileStore.logToMaster('Queueing FastQC job for: ')
         fastqc_output = job.addChildJobFn(run_fastqc, r1_id, r2_id, cores=2, disk=disk).rv()
@@ -134,7 +134,7 @@ def star_alignment(job, config, r1_id, r2_id=None):
     """
     job.fileStore.logToMaster('Queueing RSEM job for: ' + config.uuid)
     mem = '2G' if config.ci_test else '40G'
-    disk = '2G' if config.ci_test else '100G'
+    disk = '2G' if config.ci_test else r1_id.size + r2_id.size + 80530636800  # 75 G for STAR index and tmp files
     star = job.addChildJobFn(run_star, r1_id, r2_id, star_index_url=config.star_index,
                              wiggle=config.wiggle, cores=config.cores, memory=mem, disk=disk).rv()
     rsem = job.addFollowOnJobFn(rsem_quantification, config, star, disk=disk).rv()
@@ -194,7 +194,7 @@ def rsem_quantification(job, config, star_output):
         elif urlparse(config.output_dir).scheme != 's3':
             copy_files(file_paths=[bam_path], output_dir=config.output_dir)
     # Declare RSEM and RSEM post-process jobs
-    disk = PromisedRequirement(lambda x: 2 * x.size, transcriptome_id)
+    disk = 5 * transcriptome_id.size
     rsem_output = job.wrapJobFn(run_rsem, transcriptome_id, config.rsem_ref, paired=config.paired,
                                 cores=cores, disk=disk)
     rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, config.uuid, rsem_output.rv(0), rsem_output.rv(1))
@@ -271,7 +271,7 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
             p2.wait()
             processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
             processed_r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fastq'))
-        disk = PromisedRequirement(lambda y, z: 2 * (y.size + z.size), processed_r1, processed_r2)
+        disk = 2 * (processed_r1.size + processed_r2.size)
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
         if command == 'cat' and input_r1:
@@ -280,7 +280,7 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
             with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
                 subprocess.check_call([command] + fastqs, stdout=f)
             processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
-        disk = PromisedRequirement(lambda y: 2 * y.size, processed_r1)
+        disk = 2 * processed_r1.size
     # Start cutadapt step
     if config.cutadapt:
         return job.addChildJobFn(run_cutadapt, processed_r1, processed_r2, config.fwd_3pr_adapter,
