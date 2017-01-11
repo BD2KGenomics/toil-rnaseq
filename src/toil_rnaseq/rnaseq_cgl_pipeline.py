@@ -159,7 +159,8 @@ def bam_qc(job, config, star_output):
         transcriptome_id, sorted_id, wiggle_id, log_id = star_output
     else:
         transcriptome_id, sorted_id, log_id = star_output
-    return job.addChildJobFn(run_bam_qc, sorted_id, config, cores=cores).rv()
+    disk = 5 * sorted_id.size
+    return job.addChildJobFn(run_bam_qc, sorted_id, config, cores=cores, disk=disk).rv()
 
 
 def rsem_quantification(job, config, star_output):
