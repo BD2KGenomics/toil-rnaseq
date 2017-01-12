@@ -174,7 +174,7 @@ outputs:
 #      items: ["null", File]
       items: File
     outputBinding:
-      glob: '*.sortedByCoord.md.bam'
+      glob: '*.bam'
       doc: "BAM result files RNA-seq CGL pipeline"
 
 baseCommand: ["--logDebug"]
