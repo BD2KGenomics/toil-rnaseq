@@ -43,7 +43,7 @@ dct:creator:
 
 requirements:
   - class: DockerRequirement
-    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.0.2-1"
+    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.0.2-2"
 
 hints:
   - class: ResourceRequirement
@@ -53,17 +53,11 @@ hints:
     description: "The process requires at least 16G of RAM and we recommend 500GB or storage."
 
 inputs:
-  #if no tar files are going to be input 
-  #then use 
-  # "sample-tar": [],
-  #in the parameterized JSON file 
   sample-tar:
-    doc: "Absolute path(s) to sample tarballs"
-    type:
-      type: array
-      items: ["null", File]
-      inputBinding:
-        prefix: --sample-tar
+    doc: "Absolute path to sample tarball"
+    type: File[]?
+    inputBinding:
+      prefix: --sample-tar
 
   sample-single:
     doc: "Absolute path(s) to unpaired FASTQ files. FASTQ files are comma delimited. Ex: sample1,sample2,sample3,sample4"
