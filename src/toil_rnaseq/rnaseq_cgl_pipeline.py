@@ -197,7 +197,7 @@ def rsem_quantification(job, config, star_output):
     disk = 5 * transcriptome_id.size
     rsem_output = job.wrapJobFn(run_rsem, transcriptome_id, config.rsem_ref, paired=config.paired,
                                 cores=cores, disk=disk)
-    rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, config.uuid, rsem_output.rv(0), rsem_output.rv(1))
+    rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, rsem_output.rv(0), rsem_output.rv(1))
     job.addChild(rsem_output)
     rsem_output.addChild(rsem_postprocess)
     # Save STAR log
