@@ -9,6 +9,7 @@ import subprocess
 import sys
 import textwrap
 from uuid import uuid4
+import gzip
 from bd2k.util.exceptions import require
 from toil.lib.bioio import addLoggingOptions, setLoggingFromOptions
 
@@ -84,6 +85,14 @@ def catFiles(outputFile, inputFiles):
                     outfile.write(line)
     return outputFile
 
+def gzipCatFiles(outputFile, inputFiles):
+    with gzip.open(outputFile, 'w') as outfile:
+        for fname in inputFiles:
+            with gzip.open(fname) as infile:
+                for line in infile:
+                    outfile.write(line)
+    return outputFile
+
 
 def fileURL(sample):
     return 'file://' + sample
@@ -116,8 +125,12 @@ def formatPairs(sample_pairs, work_mount):
     assert len(sample_pairs) % 2 == 0
     outputName = os.path.join(work_mount, os.path.basename(sample_pairs[0]))
     outputFiles = formatPair(outputName)
-    catFiles(outputFiles[0], sample_pairs[::2])
-    catFiles(outputFiles[1], sample_pairs[1::2])
+    if not outputFiles[0].endswith('.gz'):
+        catFiles(outputFiles[0], sample_pairs[::2])
+        catFiles(outputFiles[1], sample_pairs[1::2])
+    else:
+        gzipCatFiles(outputFiles[0], sample_pairs[::2])
+        gzipCatFiles(outputFiles[1], sample_pairs[1::2])
     return fileURL(outputFiles[0]) + ',' + fileURL(outputFiles[1])
 
 def formatSingles(sample_singles, work_mount):
@@ -129,7 +142,10 @@ def formatSingles(sample_singles, work_mount):
                 return baseName + ending
     sample_singles = sample_singles.split(',')
     output = formatSingle(os.path.join(work_mount, os.path.basename(sample_singles[0])))
-    catFiles(output, sample_singles)
+    if not output.endswith('.gz'):
+        catFiles(output, sample_singles)
+    else:
+        gzipCatFiles(output, sample_singles)
     return fileURL(output)
 
 def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cutadapt, save_bam,
