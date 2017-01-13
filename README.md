@@ -16,19 +16,50 @@ pull request.  Feedback of any kind is appreciated.
 
 RNA-seq fastqs are combined, aligned, and quantified with 2 different methods (RSEM and Kallisto)
 
-This pipeline produces a tarball (tar.gz) file for a given sample that contains 3 subdirectories:
+This pipeline produces a tarball (tar.gz) file for a given sample with 3 main subdirectories: Kallisto, RSEM, and QC.
+If the pipeline is run with all possible options (`fastqc`, `bamqc`, etc), the output tar
+will have the following structure (once uncompressed):
 
-- RSEM: TPM, FPKM, counts and raw counts (parsed from RSEM output)
-- Kallisto: abundance.tsv, abundance.h5, and a JSON of run information
-- QC: FastQC output HTMLs and zip file
+```
+SAMPLE
+├── Kallisto
+│   ├── abundance.h5
+│   ├── abundance.tsv
+│   └── run_info.json
+├── QC
+│   ├── bamQC
+│   │   ├── readDist.txt
+│   │   ├── readDist.txt_PASS_qc.txt
+│   │   ├── rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf
+│   │   └── rnaAligned.out.md.sorted.geneBodyCoverage.txt
+│   ├── fastQC
+│   │   ├── R1_fastqc.html
+│   │   ├── R1_fastqc.zip
+│   │   ├── R2_fastqc.html
+│   │   └── R2_fastqc.zip
+│   └── STAR
+│       └── Log.final.out
+└── RSEM
+    ├── Hugo
+    │   ├── rsem_genes.hugo.results
+    │   └── rsem_isoforms.hugo.results
+    ├── rsem_genes.results
+    └── rsem_isoforms.results
+```
+
+If the user selects options such as `save-bam` or `wiggle`, additional files will appear in the output directory:
+
+- SAMPLE.sorted.bam OR rnaAligned.sortedByCoord.md.bam if `bamQC` step is enabled.
+- SAMPLE.wiggle.bg
 
 The output tarball is prepended with the UUID for the sample (e.g. UUID.tar.gz). 
 
 # Dependencies
 
-This pipeline has been tested on Ubuntu 14.04, but should also run on other unix based systems.  `apt-get` and `pip`
-often require `sudo` privilege, so if the below commands fail, try prepending `sudo`.  If you do not have `sudo` 
-privileges you will need to build these tools from source, or bug a sysadmin about how to get them (they don't mind). 
+This pipeline has been tested on Ubuntu 14.04, 16.04 and Mac OSX, but should also run on other unix based systems.  
+`apt-get` and `pip` often require `sudo` privilege, so if the below commands fail, try prepending `sudo`.  
+If you do not have `sudo`  privileges you will need to build these tools from source, 
+or bug a sysadmin about how to get them (they don't mind). 
 
 #### General Dependencies
 
@@ -48,8 +79,7 @@ This pipeline needs approximately 50G of RAM in order to run STAR alignment.
 
 # Installation
 
-The CGL RNA-seq pipeline is now pip installable! `pip install toil-rnaseq` for a stable version or
-`pip install --pre toil-rnaseq` for the current development version.
+The CGL RNA-seq pipeline is now pip installable!
 
 If there is an existing, system-wide installation of Toil, as is the case when using CGCloud, 
 the `pip install toil` step should be skipped and virtualenv should be invoked with `--system-site-packages`. 
@@ -59,6 +89,7 @@ To decrease the chance of versioning conflicts, install toil-rnaseq into a virtu
 
 - `virtualenv ~/toil-rnaseq` 
 - `source ~/toil-rnaseq/bin/activate`
+- `pip install toil`
 - `pip install toil-rnaseq`
 
 After installation, the pipeline can be executed by typing `toil-rnaseq` into the teriminal.
@@ -159,6 +190,9 @@ rev-3pr-adapter: AGATCGGAAGAG
 To run on a distributed AWS cluster, see [CGCloud](https://github.com/BD2KGenomics/cgcloud) for instance provisioning, 
 then run `toil-rnaseq run aws:us-west-2:example-jobstore-bucket --batchSystem=mesos --mesosMaster mesos-master:5050`
 to use the AWS job store and mesos batch system. 
+
+I have written an SOP for UCSC's Core Operations group that is 
+[available here](https://github.com/BD2KGenomics/core-operations/blob/master/SOPs/toil-rnaseq.sop.md). 
 
 # Methods
 
