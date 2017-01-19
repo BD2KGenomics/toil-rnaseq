@@ -21,11 +21,11 @@ from toil_lib import flatten
 from toil_lib import require, UserError
 from toil_lib.files import copy_files, tarball_files
 from toil_lib.jobs import map_job
+from toil_lib.programs import docker_call
 from toil_lib.tools.QC import run_fastqc
-from toil_lib.tools.aligners import run_star
 from toil_lib.tools.preprocessing import run_cutadapt
 from toil_lib.tools.quantifiers import run_kallisto, run_rsem, run_rsem_postprocess
-from toil_lib.urls import download_url_job, s3am_upload
+from toil_lib.urls import download_url_job, s3am_upload, download_url
 
 from qc import run_bam_qc
 
@@ -482,6 +482,73 @@ def generate_file(file_path, generate_func):
     with open(file_path, 'w') as f:
         f.write(generate_func())
     print('\t{} has been generated in the current working directory.'.format(os.path.basename(file_path)))
+
+
+def run_star(job, r1_id, r2_id, star_index_url, wiggle=False):
+    """
+    Performs alignment of fastqs to bam via STAR
+
+    --limitBAMsortRAM step added to deal with memory explosion when sorting certain samples.
+    The value was chosen to complement the recommended amount of memory to have when running STAR (60G)
+
+    :param JobFunctionWrappingJob job: passed automatically by Toil
+    :param str r1_id: FileStoreID of fastq (pair 1)
+    :param str r2_id: FileStoreID of fastq (pair 2 if applicable, else pass None)
+    :param str star_index_url: STAR index tarball
+    :param bool wiggle: If True, will output a wiggle file and return it
+    :return: FileStoreID from RSEM
+    :rtype: str
+    """
+    work_dir = job.fileStore.getLocalTempDir()
+    download_url(url=star_index_url, name='starIndex.tar.gz', work_dir=work_dir)
+    subprocess.check_call(['tar', '-xvf', os.path.join(work_dir, 'starIndex.tar.gz'), '-C', work_dir])
+    os.remove(os.path.join(work_dir, 'starIndex.tar.gz'))
+    # Determine tarball structure - star index contains are either in a subdir or in the tarball itself
+    star_index = os.path.join('/data', os.listdir(work_dir)[0]) if len(os.listdir(work_dir)) == 1 else '/data'
+    # Parameter handling for paired / single-end data
+    parameters = ['--runThreadN', str(job.cores),
+                  '--genomeDir', star_index,
+                  '--outFileNamePrefix', 'rna',
+                  '--outSAMtype', 'BAM', 'SortedByCoordinate',
+                  '--outSAMunmapped', 'Within KeepPairs',
+                  '--quantMode', 'TranscriptomeSAM',
+                  '--outSAMattributes', 'NH', 'HI', 'AS', 'NM', 'MD',
+                  '--outFilterType', 'BySJout',
+                  '--outFilterMultimapNmax', '20',
+                  '--outFilterMismatchNmax', '999',
+                  '--outFilterMismatchNoverReadLmax', '0.04',
+                  '--alignIntronMin', '20',
+                  '--alignIntronMax', '1000000',
+                  '--alignMatesGapMax', '1000000',
+                  '--alignSJoverhangMin', '8',
+                  '--alignSJDBoverhangMin', '1',
+                  '--sjdbScore', '1',
+                  '--limitBAMsortRAM', '49268954168']
+    if wiggle:
+        parameters.extend(['--outWigType', 'bedGraph',
+                           '--outWigStrand', 'Unstranded',
+                           '--outWigReferencesPrefix', 'chr'])
+    if r1_id and r2_id:
+        job.fileStore.readGlobalFile(r1_id, os.path.join(work_dir, 'R1.fastq'))
+        job.fileStore.readGlobalFile(r2_id, os.path.join(work_dir, 'R2.fastq'))
+        parameters.extend(['--readFilesIn', '/data/R1.fastq', '/data/R2.fastq'])
+    else:
+        job.fileStore.readGlobalFile(r1_id, os.path.join(work_dir, 'R1.fastq'))
+        parameters.extend(['--readFilesIn', '/data/R1.fastq'])
+    # Call: STAR Mapping
+    docker_call(tool='jvivian/star:2.5.2b', work_dir=work_dir, parameters=parameters)
+    # Check output bam isnt size zero
+    sorted_bam_path = os.path.join(work_dir, 'rnaAligned.sortedByCoord.out.bam')
+    assert(os.stat(sorted_bam_path).st_size > 0, 'Genome-aligned bam failed to sort. Ensure sufficient memory is free.')
+    # Write to fileStore
+    sorted_id = job.fileStore.writeGlobalFile(sorted_bam_path)
+    transcriptome_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'rnaAligned.toTranscriptome.out.bam'))
+    log_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'rnaLog.final.out'))
+    if wiggle:
+        wiggle_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'rnaSignal.UniqueMultiple.str1.out.bg'))
+        return transcriptome_id, sorted_id, wiggle_id, log_id
+    else:
+        return transcriptome_id, sorted_id, log_id
 
 
 def main():
