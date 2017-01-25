@@ -18,7 +18,7 @@ RNA-seq fastqs are combined, aligned, and quantified with 2 different methods (R
 
 This pipeline produces a tarball (tar.gz) file for a given sample with 3 main subdirectories: Kallisto, RSEM, and QC.
 If the pipeline is run with all possible options (`fastqc`, `bamqc`, etc), the output tar
-will have the following structure (once uncompressed):
+will have the following structure (once uncompressed), where **SAMPLE** is the unique name of the sample:
 
 ```
 SAMPLE
@@ -49,10 +49,10 @@ SAMPLE
 
 If the user selects options such as `save-bam` or `wiggle`, additional files will appear in the output directory:
 
-- SAMPLE.sorted.bam OR rnaAligned.sortedByCoord.md.bam if `bamQC` step is enabled.
+- SAMPLE.sorted.bam OR SAMPLE.sortedByCoord.md.bam if `bamQC` step is enabled.
 - SAMPLE.wiggle.bg
 
-The output tarball is prepended with the UUID for the sample (e.g. UUID.tar.gz). 
+The output tarball is prepended with the unique name for the sample (e.g. SAMPLE.tar.gz). 
 
 # Dependencies
 

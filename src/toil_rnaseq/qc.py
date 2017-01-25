@@ -40,9 +40,11 @@ def run_bam_qc(job, aligned_bam_id, config):
     # Save output BAM
     if config.save_bam:
         bam_path = os.path.join(work_dir, 'rnaAligned.sortedByCoord.md.bam')
+        new_bam_path = os.path.join(work_dir, config.uuid + '.sortedByCoord.md.bam')
+        os.rename(bam_path, new_bam_path)
         if urlparse(config.output_dir).scheme == 's3' and config.ssec:
-            s3am_upload(fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
+            s3am_upload(fpath=new_bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
         elif urlparse(config.output_dir).scheme != 's3':
-            copy_files(file_paths=[bam_path], output_dir=config.output_dir)
+            copy_files(file_paths=[new_bam_path], output_dir=config.output_dir)
 
     return fail_flag, job.fileStore.writeGlobalFile(os.path.join(work_dir, 'bam_qc.tar.gz'))
