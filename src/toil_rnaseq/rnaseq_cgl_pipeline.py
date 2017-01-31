@@ -16,6 +16,7 @@ from urlparse import urlparse
 import yaml
 from bd2k.util.files import mkdir_p
 from bd2k.util.processes import which
+from toil.common import Toil
 from toil.job import Job
 from toil_lib import flatten
 from toil_lib import require, UserError
@@ -591,8 +592,9 @@ def main():
         for program in ['curl', 'docker']:
             require(next(which(program), None), program + ' must be installed on every node.'.format(program))
 
-        # Start the workflow by using map_job() to run the pipeline for each sample
-        Job.Runner.startToil(Job.wrapJobFn(map_job, download_sample, samples, config), args)
+        # Start the workflow, calling map_job() to run the pipeline for each sample
+        with Toil(args) as toil:
+            toil.start(Job.wrapJobFn(map_job, download_sample, samples, config))
 
 
 if __name__ == '__main__':
