@@ -312,7 +312,7 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
             bamqc_tar = job.fileStore.readGlobalFile(bamqc_id, os.path.join(work_dir, 'bamqc.tar.gz'))
             config.uuid = 'FAIL.' + config.uuid if fail_flag else config.uuid
         else:
-            rsem_id, hugo_id, star_id = rsem_star_output
+            rsem_id, hugo_id, star_id = flatten(rsem_star_output)
         rsem_tar = job.fileStore.readGlobalFile(rsem_id, os.path.join(work_dir, 'rsem.tar.gz'))
         hugo_tar = job.fileStore.readGlobalFile(hugo_id, os.path.join(work_dir, 'rsem_hugo.tar.gz'))
         star_tar = job.fileStore.readGlobalFile(star_id, os.path.join(work_dir, 'star.tar.gz'))
