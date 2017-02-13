@@ -51,47 +51,37 @@ def download_sample(job, sample, config):
     job.fileStore.logToMaster('UUID: {}\nURL: {}\nPaired: {}\nFile Type: {}\nCores: {}\nCIMode: {}'.format(
         config.uuid, config.url, config.paired, config.file_type, config.cores, config.ci_test))
     # Download or locate local file and place in the jobStore
-    tar_id, r1_id, r2_id = None, None, None
+    tar_id, fastq_ids = None, None
     if config.file_type == 'tar':
         tar_id = job.addChildJobFn(download_url_job, config.url, cghub_key_path=config.gtkey,
                                    s3_key_path=config.ssec, disk=disk).rv()
     else:
+        urls = config.url.split(',')
         if config.paired:
-            require(len(config.url.split(',')) == 2, 'Fastq pairs must have 2 URLS separated by comma')
-            r1_url, r2_url = config.url.split(',')
-            r1_id = job.addChildJobFn(download_url_job, r1_url, cghub_key_path=config.gtkey,
-                                      s3_key_path=config.ssec, disk=disk).rv()
-            r2_id = job.addChildJobFn(download_url_job, r2_url, cghub_key_path=config.gtkey,
-                                      s3_key_path=config.ssec, disk=disk).rv()
-            config.gz = True if r1_url.endswith('gz') else None
-        else:
-            r1_id = job.addChildJobFn(download_url_job, config.url, cghub_key_path=config.gtkey,
-                                      s3_key_path=config.ssec, disk=disk).rv()
-            config.gz = True if config.url.endswith('gz') else None
-    job.addFollowOnJobFn(preprocessing_declaration, config, tar_id, r1_id, r2_id)
+            require(len(urls) % 2 == 0, 'Fastq pairs must have multiples of 2 URLS separated by comma')
+        config.gz = True if urls[0].endswith('gz') else None
+        for url in urls:
+            fastq_ids.append(job.addChildJobFn(download_url_job, url, cghub_key_path=config.gtkey,
+                                               s3_key_path=config.ssec, disk=disk).rv())
+    job.addFollowOnJobFn(preprocessing_declaration, config, tar_id, fastq_ids)
 
 
-def preprocessing_declaration(job, config, tar_id=None, r1_id=None, r2_id=None):
+def preprocessing_declaration(job, config, tar_id=None, fastq_ids=None):
     """
     Define preprocessing steps
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
     :param FileID tar_id: FileStoreID of sample tar (or None)
-    :param FileID r1_id: FileStoreID of sample read 1 (or None)
-    :param FileID r2_id: FileStoreID of sample read 2 (or None)
+    :param list[FileID] fastq_ids: FileStoreIDs of fastq files
     """
     if tar_id:
         job.fileStore.logToMaster('Processing sample tar and queueing CutAdapt for: ' + config.uuid)
         disk = 5 * tar_id.size
         preprocessing_output = job.addChildJobFn(process_sample, config, input_tar=tar_id, disk=disk).rv()
     else:
-        if r2_id:
-            disk = 3 * (r1_id.size + r2_id.size)
-        else:
-            disk = 3 * r1_id.size
-        preprocessing_output = job.addChildJobFn(process_sample, config, input_r1=r1_id, input_r2=r2_id,
-                                                 gz=config.gz, disk=disk).rv()
+        disk = 3 * sum([x.size for x in fastq_ids])
+        preprocessing_output = job.addChildJobFn(process_sample, config, fastq_ids=fastq_ids, disk=disk).rv()
     job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
 
 
@@ -209,16 +199,14 @@ def rsem_quantification(job, config, star_output):
     return rsem_postprocess.rv(), star_id
 
 
-def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz=None):
+def process_sample(job, config, input_tar=None, fastq_ids=None):
     """
     Converts sample.tar(.gz) into a fastq pair (or single fastq if single-ended.)
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
     :param FileID input_tar: fileStoreID of the tarball (if applicable)
-    :param FileID input_r1: fileStoreID of r1 fastq (if applicable)
-    :param FileID input_r2: fileStoreID of r2 fastq (if applicable)
-    :param bool gz: If True, unzips the r1/r2 files
+    :param list[FileID] fastq_ids: FileStoreIDs of fastq files
     :return: FileStoreID from Cutadapt or from fastqs directly if pipeline was run without Cutadapt option
     :rtype: tuple(FileID, FileID)
     """
@@ -233,10 +221,12 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         subprocess.check_call(['tar', '-xvf', tar_path, '-C', work_dir], stderr=PIPE, stdout=PIPE)
         job.fileStore.deleteGlobalFile(input_tar)
     else:
-        ext = '.fq.gz' if gz else '.fq'
-        job.fileStore.readGlobalFile(input_r1, os.path.join(work_dir, 'R1' + ext))
-        if config.paired:
-            job.fileStore.readGlobalFile(input_r2, os.path.join(work_dir, 'R2' + ext))
+        ext = '.fq.gz' if config.gz else '.fq'
+        for i, fastq_id in enumerate(fastq_ids):
+            if i % 2 == 0:
+                job.fileStore.readGlobalFile(fastq_id, os.path.join(work_dir, 'Fastq_{}_R1{}'.format(i, ext)))
+            else:
+                job.fileStore.readGlobalFile(fastq_id, os.path.join(work_dir, 'Fastq_{}_R2{}'.format(i, ext)))
     fastqs = []
     for root, subdir, files in os.walk(work_dir):
         fastqs.extend([os.path.join(root, x) for x in files])
@@ -260,9 +250,9 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         command = 'zcat' if r1[0].endswith('.gz') and r2[0].endswith('.gz') else 'cat'
 
         # If sample is already a single R1 / R2 fastq
-        if command == 'cat' and input_r1 and input_r2:
-            processed_r1 = input_r1
-            processed_r2 = input_r2
+        if command == 'cat' and len(fastqs) == 2:
+            processed_r1 = fastqs[0]
+            processed_r2 = fastqs[1]
         else:
             with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f1:
                 p1 = subprocess.Popen([command] + r1, stdout=f1)
@@ -275,8 +265,8 @@ def process_sample(job, config, input_tar=None, input_r1=None, input_r2=None, gz
         disk = 2 * (processed_r1.size + processed_r2.size)
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
-        if command == 'cat' and input_r1:
-            processed_r1 = input_r1
+        if command == 'cat' and len(fastqs) == 1:
+            processed_r1 = fastqs[0]
         else:
             with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
                 subprocess.check_call([command] + fastqs, stdout=f)
@@ -454,7 +444,8 @@ def generate_manifest():
         #   UUID        This should be a unique identifier for the sample to be processed
         #   URL         A URL {scheme} pointing to the sample
         #
-        #   If sample is being submitted as a fastq pair, provide two URLs separated by a comma.
+        #   If sample is being submitted as a fastq or several fastqs, provide URLs separated by a comma.
+        #   If providing paired fastqs, alternate the fastqs so every R1 is paired with its R2 as the next URL.
         #   Samples must have the same extension - do not mix and match gzip and non-gzipped sample pairs.
         #
         #   Samples consisting of tarballs with fastq files inside must follow the file name convention of
