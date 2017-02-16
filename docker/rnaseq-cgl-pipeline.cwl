@@ -43,7 +43,7 @@ dct:creator:
 
 requirements:
   - class: DockerRequirement
-    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.0.2-3"
+    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.1.1"
 
 hints:
   - class: ResourceRequirement
@@ -143,6 +143,12 @@ inputs:
     doc: "Will set a cap on number of cores to use, default is all available cores."
     inputBinding:
       prefix: --cores
+
+  output-basename:
+    type: string?
+    doc: "Basename to use for naming the output files"
+    inputBinding:
+      prefix: --output-basename
 
 outputs:
   output_files:

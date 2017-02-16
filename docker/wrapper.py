@@ -39,7 +39,7 @@ def call_pipeline(mount, args):
         command.append('--restart')
     if args.cores:
         command.append('--maxCores={}'.format(args.cores))
-    path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, args.sample_paired, work_dir)
+    path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, args.sample_paired, work_dir, args.output_basename)
     command.append('--manifest=' + path_to_manifest)
     try:
         log.info('Docker Comand: ' + str(command))
@@ -56,8 +56,25 @@ def call_pipeline(mount, args):
         else:
             log.info('Flag "--no-clean" was used, therefore {} was not deleted.'.format(work_dir))
 
+    #DEBUG !!!
+    print("DEBUG!!!!! output dir is "+mount+" and files are:")
+    print(os.listdir(mount))
+    fail_files = [fail_file for fail_file in os.listdir(mount) if fail_file.startswith("FAIL.") and fail_file.endswith(".tar.gz")]
+    print("fail files:", ' '.join(fail_files))
+    cmd = ["mv", mount+"/"+fail_file, mount+"/"+fail_file[len("FAIL."):]]
+    for fail_file in fail_files:
+        print("moving "+mount+"/"+fail_file+" to "+mount+"/"+fail_file[len("FAIL."):])
+        try:
+            subprocess.check_call(cmd) 
+        except subprocess.CalledProcessError as e:
+            print(e.message, file=sys.stderr)
+        except Exception as e:
+            print("\nERROR: FAIL file mv exception information:" + str(e), file=sys.stderr)
+    #END DEBUG !!!!
 
-def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir):
+
+
+def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output_basename):
     path = os.path.join(workdir, 'manifest-toil-rnaseq.tsv')
     if sample_tars:
         sample_tars = map(fileURL, sample_tars)
@@ -72,7 +89,7 @@ def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir):
                 continue
             type = 'fq' if samples != sample_tars else 'tar'
             pairing = 'paired' if samples != sample_singles else 'single'
-            f.write('\n'.join('\t'.join([type, pairing, getSampleName(sample), sample]) for sample in samples))
+            f.write('\n'.join('\t'.join([type, pairing, getSampleName(sample, output_basename), sample]) for sample in samples))
             f.write('\n')
     return path
 
@@ -98,10 +115,13 @@ def fileURL(sample):
     return 'file://' + sample
 
 
-def getSampleName(sample):
-    name = os.path.basename(sample).split('.')[0]
-    if name.endswith('R1') or name.endswith('R2'):
-        return name[:-2]
+def getSampleName(sample, output_basename):
+    if output_basename:
+        name = output_basename
+    else:
+        name = os.path.basename(sample).split('.')[0]
+        if name.endswith('R1') or name.endswith('R2'):
+            return name[:-2]
     return name
 
 
@@ -238,6 +258,8 @@ def main():
     parser.add_argument('--work_mount', required=True,
                         help='Mount where intermediate files should be written. This directory '
                              'should be mirror mounted into the container.')
+    parser.add_argument('--output-basename', default="",
+                        help='Base name to use for naming the output files ')
     # although we don't actually set the log level in this module, the option is propagated to toil. For this reason
     # we want the logging options to show up with we run --help
     addLoggingOptions(parser)
