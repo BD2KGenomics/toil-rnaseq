@@ -60,7 +60,7 @@ def call_pipeline(mount, args):
     fail_files = [x for x in os.listdir(mount) if x.startswith('FAIL.')]
     log.info("fail files are:\n{}:".format('\n'.join(fail_files)))
     for fail_file in fail_files:
-        new_file = fail_file.lstrip('FAIL.')
+        new_file = fail_file[len('FAIL.'):]
         fail_file_path = os.path.join(mount, fail_file)
         new_file_path = os.path.join(mount, new_file)
         cmd = ["mv", fail_file_path, new_file_path]
