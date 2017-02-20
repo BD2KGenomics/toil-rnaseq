@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version = '3.1.3a1'
+version = '3.1.3'
 
 required_versions = {'toil': '>=3.3.5',
                      'toil-lib': '==1.1.3',
