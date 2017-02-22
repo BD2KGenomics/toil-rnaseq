@@ -147,9 +147,9 @@ def bam_qc(job, config, star_output):
     """
     cores = min(4, config.cores)
     if config.wiggle:
-        transcriptome_id, sorted_id, wiggle_id, log_id = star_output
+        transcriptome_id, sorted_id, wiggle_id, log_id, sj_id = star_output
     else:
-        transcriptome_id, sorted_id, log_id = star_output
+        transcriptome_id, sorted_id, log_id, sj_id = star_output
     disk = 5 * sorted_id.size
     return job.addChildJobFn(run_bam_qc, sorted_id, config, cores=cores, disk=disk).rv()
 
@@ -167,7 +167,7 @@ def rsem_quantification(job, config, star_output):
     work_dir = job.fileStore.getLocalTempDir()
     cores = min(16, config.cores)
     if config.wiggle:
-        transcriptome_id, sorted_id, wiggle_id, log_id = flatten(star_output)
+        transcriptome_id, sorted_id, wiggle_id, log_id, sj_id = flatten(star_output)
         wiggle_path = os.path.join(work_dir, config.uuid + '.wiggle.bg')
         job.fileStore.readGlobalFile(wiggle_id, wiggle_path)
         if urlparse(config.output_dir).scheme == 's3':
@@ -175,7 +175,7 @@ def rsem_quantification(job, config, star_output):
         else:
             copy_files(file_paths=[wiggle_path], output_dir=config.output_dir)
     else:
-        transcriptome_id, sorted_id, log_id = star_output
+        transcriptome_id, sorted_id, log_id, sj_id = flatten(star_output)
     # Save sorted bam if flag is selected
     if config.save_bam and not config.bamqc:  # if config.bamqc is selected, bam is being saved in run_bam_qc
         bam_path = os.path.join(work_dir, config.uuid + '.sorted.bam')
@@ -191,10 +191,12 @@ def rsem_quantification(job, config, star_output):
     rsem_postprocess = job.wrapJobFn(run_rsem_postprocess, rsem_output.rv(0), rsem_output.rv(1))
     job.addChild(rsem_output)
     rsem_output.addChild(rsem_postprocess)
-    # Save STAR log
+    # Save STAR log and splice junction file
     log_path = os.path.join(work_dir, 'Log.final.out')
     job.fileStore.readGlobalFile(log_id, log_path)
-    tarball_files(tar_name='star.tar.gz', file_paths=[log_path], output_dir=work_dir)
+    sj_path = os.path.join(work_dir, 'SJ.out.tab')
+    job.fileStore.readGlobalFile(sj_id, sj_path)
+    tarball_files(tar_name='star.tar.gz', file_paths=[log_path, sj_path], output_dir=work_dir)
     star_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'star.tar.gz'))
     return rsem_postprocess.rv(), star_id
 
