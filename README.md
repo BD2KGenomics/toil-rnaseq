@@ -38,7 +38,8 @@ SAMPLE
 │   │   ├── R2_fastqc.html
 │   │   └── R2_fastqc.zip
 │   └── STAR
-│       └── Log.final.out
+│       ├── Log.final.out
+│       └── SJ.out.tab
 └── RSEM
     ├── Hugo
     │   ├── rsem_genes.hugo.results
