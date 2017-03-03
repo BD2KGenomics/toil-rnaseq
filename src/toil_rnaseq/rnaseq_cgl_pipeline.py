@@ -51,7 +51,8 @@ def download_sample(job, sample, config):
     job.fileStore.logToMaster('UUID: {}\nURL: {}\nPaired: {}\nFile Type: {}\nCores: {}\nCIMode: {}'.format(
         config.uuid, config.url, config.paired, config.file_type, config.cores, config.ci_test))
     # Download or locate local file and place in the jobStore
-    tar_id, fastq_ids = None, None
+    tar_id = None
+    fastq_ids = []
     if config.file_type == 'tar':
         tar_id = job.addChildJobFn(download_url_job, config.url, cghub_key_path=config.gtkey,
                                    s3_key_path=config.ssec, disk=disk).rv()
