@@ -47,4 +47,7 @@ def run_bam_qc(job, aligned_bam_id, config):
         elif urlparse(config.output_dir).scheme != 's3':
             copy_files(file_paths=[new_bam_path], output_dir=config.output_dir)
 
+    # Delete intermediates
+    job.fileStore.deleteGlobalFile(aligned_bam_id)
+
     return fail_flag, job.fileStore.writeGlobalFile(os.path.join(work_dir, 'bam_qc.tar.gz'))

@@ -111,6 +111,7 @@ def pipeline_declaration(job, config, preprocessing_output):
         job.fileStore.logToMaster('Queueing STAR alignment for: ' + config.uuid)
         rsem_star_output = job.addChildJobFn(star_alignment, config, r1_id, r2_id).rv()
     job.addFollowOnJobFn(consolidate_output, config, kallisto_output, rsem_star_output, fastqc_output)
+    job.addFollowOnJobFn(cleanup_ids, [r1_id, r2_id])
 
 
 def star_alignment(job, config, r1_id, r2_id=None):
@@ -157,7 +158,7 @@ def bam_qc(job, config, star_output):
 
 def rsem_quantification(job, config, star_output):
     """
-    Unpack STAR results and run RSEM (and saving BAM from STAR)
+    Unpack STAR results and run RSEM, saving wiggle/bam if specified
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
@@ -175,6 +176,7 @@ def rsem_quantification(job, config, star_output):
             s3am_upload(fpath=wiggle_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
         else:
             copy_files(file_paths=[wiggle_path], output_dir=config.output_dir)
+        job.fileStore.deleteGlobalFile(wiggle_id)
     else:
         transcriptome_id, sorted_id, log_id, sj_id = flatten(star_output)
     # Save sorted bam if flag is selected
@@ -199,6 +201,13 @@ def rsem_quantification(job, config, star_output):
     job.fileStore.readGlobalFile(sj_id, sj_path)
     tarball_files(tar_name='star.tar.gz', file_paths=[log_path, sj_path], output_dir=work_dir)
     star_id = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'star.tar.gz'))
+
+    # Delete intermediates
+    ids_to_delete = [transcriptome_id, log_id, sj_id]
+    if not config.bamqc:  # If BamQC isn't being run, the sorted bam is no longer needed
+        ids_to_delete.append(sorted_id)
+    job.addFollowOnJobFn(cleanup_ids, ids_to_delete)
+
     return rsem_postprocess.rv(), star_id
 
 
@@ -215,14 +224,15 @@ def process_sample(job, config, input_tar=None, fastq_ids=None):
     """
     job.fileStore.logToMaster('Processing sample: {}'.format(config.uuid))
     work_dir = job.fileStore.getLocalTempDir()
+    delete_fastqs = True
     processed_r1, processed_r2 = None, None
     # I/O
     if input_tar:
-        job.fileStore.readGlobalFile(input_tar, os.path.join(work_dir, 'sample.tar'))
+        job.fileStore.readGlobalFile(input_tar, os.path.join(work_dir, 'sample.tar'), mutable=True)
         tar_path = os.path.join(work_dir, 'sample.tar')
-        # Untar File and concat
+        # Untar sample
         subprocess.check_call(['tar', '-xvf', tar_path, '-C', work_dir], stderr=PIPE, stdout=PIPE)
-        job.fileStore.deleteGlobalFile(input_tar)
+        os.remove(tar_path)
     else:
         ext = '.fq.gz' if config.gz else '.fq'
         for i, fastq_id in enumerate(fastq_ids):
@@ -254,8 +264,9 @@ def process_sample(job, config, input_tar=None, fastq_ids=None):
 
         # If sample is already a single R1 / R2 fastq
         if command == 'cat' and len(fastqs) == 2:
-            processed_r1 = fastqs[0]
-            processed_r2 = fastqs[1]
+            processed_r1 = fastq_ids[0]
+            processed_r2 = fastq_ids[1]
+            delete_fastqs = False
         else:
             with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f1:
                 p1 = subprocess.Popen([command] + r1, stdout=f1)
@@ -269,12 +280,18 @@ def process_sample(job, config, input_tar=None, fastq_ids=None):
     else:
         command = 'zcat' if fastqs[0].endswith('.gz') else 'cat'
         if command == 'cat' and len(fastqs) == 1:
-            processed_r1 = fastqs[0]
+            processed_r1 = fastq_ids[0]
+            delete_fastqs = False
         else:
             with open(os.path.join(work_dir, 'R1.fastq'), 'w') as f:
                 subprocess.check_call([command] + fastqs, stdout=f)
             processed_r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fastq'))
         disk = 2 * processed_r1.size
+
+    # Cleanup Intermediates
+    ids_to_delete = [input_tar] + fastq_ids if delete_fastqs and fastq_ids else [input_tar]
+    job.addFollowOnJobFn(cleanup_ids, ids_to_delete)
+
     # Start cutadapt step
     if config.cutadapt:
         return job.addChildJobFn(run_cutadapt, processed_r1, processed_r2, config.fwd_3pr_adapter,
@@ -299,6 +316,7 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
     config.uuid = 'SINGLE-END.' + config.uuid if not config.paired else config.uuid
     # Retrieve output file paths to consolidate
     rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar, star_tar = None, None, None, None, None, None
+    rsem_id, hugo_id, star_id = None, None, None
     if rsem_star_output:
         if config.bamqc:
             rsem_id, hugo_id, star_id, fail_flag, bamqc_id = flatten(rsem_star_output)
@@ -343,6 +361,20 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
         job.fileStore.logToMaster('Moving {} to output dir: {}'.format(config.uuid, config.output_dir))
         mkdir_p(config.output_dir)
         copy_files(file_paths=[os.path.join(work_dir, config.uuid + '.tar.gz')], output_dir=config.output_dir)
+
+    # Delete intermediates
+    ids_to_delete = [x for x in [rsem_id, hugo_id, star_id, kallisto_output, fastqc_output] if x is not None]
+    job.addChildJobFn(cleanup_ids, ids_to_delete)
+
+
+def cleanup_ids(job, ids_to_delete):
+    """
+    Delete fileStoreIDs for files no longer needed
+
+    :param JobFunctionWrappingJob job: passed automatically by Toil
+    :param list ids_to_delete: list of FileStoreIDs to delete
+    """
+    [job.fileStore.deleteGlobalFile(x) for x in ids_to_delete]
 
 
 # Pipeline specific functions
