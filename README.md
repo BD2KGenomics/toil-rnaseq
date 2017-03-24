@@ -2,8 +2,8 @@
 ### Guide: Running the CGL HG38 RNA-seq Pipeline using Toil
 
 This guide attempts to walk the user through running this pipeline from start to finish. If there are any questions
-please contact John Vivian (jtvivian@gmail.com). If you find any errors or corrections please feel free to make a 
-pull request.  Feedback of any kind is appreciated.
+please contact [John Vivian](jtvivian@gmail.com). If you find any errors or corrections please feel free to make a 
+pull request. Feedback of any kind is appreciated.
 
 - [Dependencies](#dependencies)
 - [Installation](#installation)
@@ -25,6 +25,7 @@ SAMPLE
 ├── Kallisto
 │   ├── abundance.h5
 │   ├── abundance.tsv
+│   ├── fusion.txt
 │   └── run_info.json
 ├── QC
 │   ├── bamQC
