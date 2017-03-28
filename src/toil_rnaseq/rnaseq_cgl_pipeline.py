@@ -96,12 +96,10 @@ def pipeline_declaration(job, config, preprocessing_output):
     """
     r1_id, r2_id = preprocessing_output
     kallisto_output, rsem_star_output, fastqc_output = None, None, None
-    if r2_id:
-        disk = 2 * (r1_id.size + r2_id.size)
-    else:
-        disk = 2 * r1_id.size
+    disk = 2 * (r1_id.size + r2_id.size) if r2_id else 2 * r1_id.size
+    # Define jobs based on user configuration
     if config.fastqc:
-        job.fileStore.logToMaster('Queueing FastQC job for: ')
+        job.fileStore.logToMaster('Queueing FastQC job for: ' + config.uuid)
         fastqc_output = job.addChildJobFn(run_fastqc, r1_id, r2_id, cores=2, disk=disk).rv()
     if config.kallisto_index:
         job.fileStore.logToMaster('Queueing Kallisto job for: ' + config.uuid)
@@ -126,8 +124,13 @@ def star_alignment(job, config, r1_id, r2_id=None):
     :rtype: FileID|tuple(FileID, FileID)
     """
     job.fileStore.logToMaster('Queueing RSEM job for: ' + config.uuid)
+    # Define memory and disk requirements
     mem = '2G' if config.ci_test else '40G'
-    disk = '2G' if config.ci_test else r1_id.size + r2_id.size + 80530636800  # 75 G for STAR index and tmp files
+    if config.ci_test:
+        disk = '2G'
+    else:
+        disk = r1_id.size + r2_id.size + 80530636800 if r2_id else r1_id.size + 80530636800  # 75G for STAR index / tmp
+    # Define job functions for STAR and RSEM
     star = job.addChildJobFn(run_star, r1_id, r2_id, star_index_url=config.star_index,
                              wiggle=config.wiggle, cores=config.cores, memory=mem, disk=disk).rv()
     rsem = job.addFollowOnJobFn(rsem_quantification, config, star, disk=disk).rv()
