@@ -10,7 +10,7 @@ pull request. Feedback of any kind is appreciated.
 - [Usage](#general-usage)
 
 For detailed information and troubleshooting, see the [Wiki](https://github.com/BD2KGenomics/toil-rnaseq/wiki)
-- [Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Pipeline-Inputs)
+- [Pipeline Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Pipeline-Inputs)
 - [Methods](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Methods)
 - [Troubleshooting](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Troubleshooting)
 
