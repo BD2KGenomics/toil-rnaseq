@@ -623,7 +623,10 @@ def main():
 
         # Start the workflow, calling map_job() to run the pipeline for each sample
         with Toil(args) as toil:
-            toil.start(Job.wrapJobFn(map_job, download_sample, samples, config))
+            if args.restart:
+                toil.restart()
+            else:
+                toil.start(Job.wrapJobFn(map_job, download_sample, samples, config))
 
 
 if __name__ == '__main__':
