@@ -366,7 +366,7 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
         copy_files(file_paths=[os.path.join(work_dir, config.uuid + '.tar.gz')], output_dir=config.output_dir)
 
     # Delete intermediates
-    ids_to_delete = [x for x in [rsem_id, hugo_id, star_id, kallisto_output, fastqc_output] if x is not None]
+    ids_to_delete = [x for x in [rsem_id, hugo_id, star_id, kallisto_output, fastqc_output]]
     job.addChildJobFn(cleanup_ids, ids_to_delete)
 
 
@@ -377,7 +377,7 @@ def cleanup_ids(job, ids_to_delete):
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param list ids_to_delete: list of FileStoreIDs to delete
     """
-    [job.fileStore.deleteGlobalFile(x) for x in ids_to_delete]
+    [job.fileStore.deleteGlobalFile(x) for x in ids_to_delete if x is not None]
 
 
 # Pipeline specific functions
