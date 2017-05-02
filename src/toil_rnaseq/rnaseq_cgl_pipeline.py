@@ -559,10 +559,12 @@ def main():
     """
     parser = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawTextHelpFormatter)
     subparsers = parser.add_subparsers(dest='command')
+
     # Generate subparsers
     subparsers.add_parser('generate-config', help='Generates an editable config in the current working directory.')
     subparsers.add_parser('generate-manifest', help='Generates an editable manifest in the current working directory.')
     subparsers.add_parser('generate', help='Generates a config and manifest in the current working directory.')
+
     # Run subparser
     parser_run = subparsers.add_parser('run', help='Runs the RNA-seq pipeline')
     group = parser_run.add_mutually_exclusive_group()
@@ -578,19 +580,23 @@ def main():
                             'file:///full/path/to/file.tar. The UUID for the sample will be derived from the file.'
                             'Samples passed in this way will be assumed to be paired end, if using single-end data, '
                             'please use the manifest option.')
+
     # If no arguments provided, print full help menu
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
+
     # Add Toil options
     Job.Runner.addToilOptions(parser_run)
     args = parser.parse_args()
+
     # Parse subparsers related to generation of config and manifest
     cwd = os.getcwd()
     if args.command == 'generate-config' or args.command == 'generate':
         generate_file(os.path.join(cwd, 'config-toil-rnaseq.yaml'), generate_config)
     if args.command == 'generate-manifest' or args.command == 'generate':
         generate_file(os.path.join(cwd, 'manifest-toil-rnaseq.tsv'), generate_manifest)
+
     # Pipeline execution
     elif args.command == 'run':
         require(os.path.exists(args.config), '{} not found. Please run '
@@ -601,22 +607,36 @@ def main():
             samples = parse_samples(path_to_manifest=args.manifest)
         else:
             samples = parse_samples(sample_urls=args.samples)
+
         # Parse config
         parsed_config = {x.replace('-', '_'): y for x, y in yaml.load(open(args.config).read()).iteritems()}
         config = argparse.Namespace(**parsed_config)
         config.maxCores = int(args.maxCores) if args.maxCores else sys.maxint
+
         # Config sanity checks
         require(config.kallisto_index or config.star_index,
                 'URLs not provided for Kallisto or STAR, so there is nothing to do!')
         if config.star_index or config.rsem_ref:
             require(config.star_index and config.rsem_ref, 'Input provided for STAR or RSEM but not both. STAR: '
                                                            '{}, RSEM: {}'.format(config.star_index, config.rsem_ref))
+
+        # Output dir checks and handling
         require(config.output_dir, 'No output location specified: {}'.format(config.output_dir))
         for input in [x for x in [config.kallisto_index, config.star_index, config.rsem_ref] if x]:
             require(urlparse(input).scheme in schemes,
                     'Input in config must have the appropriate URL prefix: {}'.format(schemes))
+
+        if not config.output_dir.startswith('/'):
+            if urlparse(config.output_dir).scheme == 'file':
+                config.output_dir = config.output_dir.split('file://')[1]
+                if not config.output_dir.startswith('/'):
+                    raise UserError('Output dir neither starts with / or is an S3 URL')
+            elif not urlparse(config.output_dir).scheme == 's3':
+                raise UserError('Output dir neither starts with / or is an S3 URL')
+
         if not config.output_dir.endswith('/'):
             config.output_dir += '/'
+
         # Program checks
         for program in ['curl', 'docker']:
             require(next(which(program), None), program + ' must be installed on every node.'.format(program))
