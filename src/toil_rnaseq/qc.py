@@ -1,8 +1,8 @@
 import os
 from urlparse import urlparse
 
+from toil.lib.docker import dockerCall
 from toil_lib.files import tarball_files, copy_files
-from toil_lib.programs import docker_call
 from toil_lib.urls import s3am_upload
 
 
@@ -11,7 +11,7 @@ def run_bam_qc(job, aligned_bam_id, config):
     Run BAM QC as specified by California Kids Cancer Comparison (CKCC)
 
     :param JobFunctionWrappingJob job:
-    :param str aligned_bam_id: FileStoreID of sorted bam from STAR
+    :param str aligned_bam_id: FileStoreID of aligned bam from STAR
     :param Namespace config: Argparse Namespace object containing argument inputs
         Must contain:
             config.uuid str: UUID of input sample
@@ -23,7 +23,7 @@ def run_bam_qc(job, aligned_bam_id, config):
     """
     work_dir = job.fileStore.getLocalTempDir()
     job.fileStore.readGlobalFile(aligned_bam_id, os.path.join(work_dir, 'rnaAligned.sortedByCoord.out.bam'))
-    docker_call(tool='hbeale/treehouse_bam_qc:1.0', work_dir=work_dir, parameters=['runQC.sh', str(job.cores)])
+    dockerCall(job, tool='hbeale/treehouse_bam_qc:1.0', workDir=work_dir, parameters=['runQC.sh', str(job.cores)])
 
     # Tar Output files
     output_names = ['readDist.txt', 'rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf',
