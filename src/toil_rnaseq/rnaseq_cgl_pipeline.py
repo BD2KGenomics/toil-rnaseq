@@ -393,7 +393,7 @@ def sort_and_save_bam(job, config, bam_id):
                   '-O', 'bam',
                   '-T', 'temp',
                   '-@', str(job.cores),
-                  '/data/star.bam']
+                  '/data/aligned.bam']
 
     dockerCall(job, tool='quay.io/ucsc_cgl/samtools:1.3--256539928ea162949d8a65ca5c79a72ef557ce7c',
                parameters=parameters, workDir=work_dir)
