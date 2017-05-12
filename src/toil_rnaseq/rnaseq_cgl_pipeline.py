@@ -132,8 +132,9 @@ def star_alignment(job, config, r1_id, r2_id=None):
     else:
         disk = r1_id.size + r2_id.size + 80530636800 if r2_id else r1_id.size + 80530636800  # 75G for STAR index / tmp
     # Define job functions for STAR and RSEM
+    sort = True if config.wiggle else False
     star = job.addChildJobFn(run_star, r1_id, r2_id, star_index_url=config.star_index,
-                             wiggle=config.wiggle, sort=False, cores=config.cores, memory=mem, disk=disk).rv()
+                             wiggle=config.wiggle, sort=sort, cores=config.cores, memory=mem, disk=disk).rv()
     rsem = job.addFollowOnJobFn(rsem_quantification, config, star, disk=disk).rv()
     if config.bamqc:
         return rsem, job.addFollowOnJobFn(bam_qc, config, star, disk=disk).rv()
@@ -185,8 +186,12 @@ def rsem_quantification(job, config, star_output):
         transcriptome_id, aligned_id, log_id, sj_id = flatten(star_output)
     # Save sorted bam if flag is selected
     if config.save_bam and not config.bamqc:  # if config.bamqc is selected, bam is being saved in run_bam_qc
-        disk = 3 * aligned_id.size
-        job.addChildJobFn(sort_and_save_bam, config, aligned_id, cores=config.cores, disk=disk)
+        if config.wiggle:   # Wiggle requires STAR sorting, so bam is already sorted
+            bam_path = job.fileStore.readGlobalFile(aligned_id, os.path.join(work_dir, config.uuid + '.sorted.bam'))
+            move_or_upload(config, files=[bam_path])
+        else:
+            disk = 3 * aligned_id.size
+            job.addChildJobFn(sort_and_save_bam, config, aligned_id, cores=config.cores, disk=disk)
     # Declare RSEM and RSEM post-process jobs
     disk = 5 * transcriptome_id.size
     rsem_output = job.wrapJobFn(run_rsem, transcriptome_id, config.rsem_ref, paired=config.paired,
@@ -399,11 +404,7 @@ def sort_and_save_bam(job, config, bam_id):
                parameters=parameters, workDir=work_dir)
 
     bam_path = os.path.join(work_dir, '{}.sorted.bam'.format(config.uuid))
-
-    if urlparse(config.output_dir).scheme == 's3' and config.ssec:
-        s3am_upload(fpath=bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
-    elif urlparse(config.output_dir).scheme != 's3':
-        copy_files(file_paths=[bam_path], output_dir=config.output_dir)
+    move_or_upload(config, files=[bam_path])
 
 
 # Pipeline specific functions
@@ -487,6 +488,7 @@ def generate_config():
         gtkey:
 
         # Optional: If true, saves the wiggle file (.bg extension) output by STAR
+        # WARNING: Requires STAR sorting, which has memory leak issues that can crash the pipeline. 
         wiggle:
 
         # Optional: If true, saves the aligned bam (by coordinate) produced by STAR
@@ -539,6 +541,13 @@ def generate_file(file_path, generate_func):
         f.write(generate_func())
     print('\t{} has been generated in the current working directory.'.format(os.path.basename(file_path)))
 
+
+def move_or_upload(config, files):
+    if urlparse(config.output_dir).scheme == 's3' and config.ssec:
+        for f in files:
+            s3am_upload(fpath=f, s3_dir=config.output_dir, s3_key_path=config.ssec)
+    elif urlparse(config.output_dir).scheme != 's3':
+        copy_files(file_paths=files, output_dir=config.output_dir)
 
 def main():
     """
