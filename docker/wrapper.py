@@ -47,7 +47,7 @@ def call_pipeline(mount, args):
     except subprocess.CalledProcessError as e:
         print(e.message, file=sys.stderr)
         exit(e.returncode)
-    finally:
+    else:
         log.info('Pipeline terminated, changing ownership of output files from root to user.')
         stat = os.stat(mount)
         subprocess.check_call(['chown', '-R', '{}:{}'.format(stat.st_uid, stat.st_gid), mount])
