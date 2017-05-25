@@ -46,7 +46,8 @@ def call_pipeline(mount, args):
         subprocess.check_call(command)
     except subprocess.CalledProcessError as e:
         print(e.message, file=sys.stderr)
-    finally:
+        exit(e.returncode)
+    else:
         log.info('Pipeline terminated, changing ownership of output files from root to user.')
         stat = os.stat(mount)
         subprocess.check_call(['chown', '-R', '{}:{}'.format(stat.st_uid, stat.st_gid), mount])
@@ -66,13 +67,11 @@ def call_pipeline(mount, args):
         cmd = ["mv", fail_file_path, new_file_path]
         log.info("moving " + fail_file_path + " to " + new_file_path)
         try:
-            subprocess.check_call(cmd) 
+            subprocess.check_call(cmd)
         except subprocess.CalledProcessError as e:
             print(e.message, file=sys.stderr)
         except Exception as e:
             print("\nERROR: FAIL file mv exception information:" + str(e), file=sys.stderr)
-
-
 
 def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output_basename):
     path = os.path.join(workdir, 'manifest-toil-rnaseq.tsv')
@@ -274,7 +273,7 @@ def main():
     # although we don't actually set the log level in this module, the option is propagated to toil. For this reason
     # we want the logging options to show up with we run --help
     addLoggingOptions(parser)
-    toilLoggingOption = None
+    toilLoggingOption = '--logDebug'
     for arg in sys.argv:
         if 'log' in arg:
             toilLoggingOption = arg
