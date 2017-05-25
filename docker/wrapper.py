@@ -110,6 +110,17 @@ def gzipCatFiles(outputFile, inputFiles):
     return outputFile
 
 
+def zcatFiles(outputFile, inputFiles):
+    '''
+    Routine to unzip and concatenate input files
+    using zcat which is much faster than using python 
+    gunzip
+    '''
+    command = 'zcat'
+    with open(outputFile, 'w') as outfile:
+        subprocess.check_call([command] + inputFiles, stdout=outfile)
+    return outputFile
+
 def fileURL(sample):
     return 'file://' + sample
 
@@ -148,8 +159,8 @@ def formatPairs(sample_pairs, work_mount):
         catFiles(outputFiles[0], sample_pairs[::2])
         catFiles(outputFiles[1], sample_pairs[1::2])
     else:
-        gzipCatFiles(outputFiles[0], sample_pairs[::2])
-        gzipCatFiles(outputFiles[1], sample_pairs[1::2])
+        zcatFiles(outputFiles[0], sample_pairs[::2])
+        zcatFiles(outputFiles[1], sample_pairs[1::2])
     return fileURL(outputFiles[0]) + ',' + fileURL(outputFiles[1])
 
 def formatSingles(sample_singles, work_mount):
@@ -164,7 +175,7 @@ def formatSingles(sample_singles, work_mount):
     if not output.endswith('.gz'):
         catFiles(output, sample_singles)
     else:
-        gzipCatFiles(output, sample_singles)
+        zcatFiles(output, sample_singles)
     return fileURL(output)
 
 def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cutadapt, save_bam,
