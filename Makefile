@@ -130,13 +130,20 @@ clean_docker:
 	-cd docker && make clean
 
 test_docker:
+	$(python) setup.py sdist$
 	cd docker && make test
+	rm ./dist/toil-rnaseq*.tar.gz
 
 docker:
+	$(python) setup.py sdist$
 	cd docker && make
+	rm ./dist/toil-rnaseq*.tar.gz
+
 
 push_docker: docker
+	$(python) setup.py sdist$
 	cd docker && make push
+	rm ./dist/toil-rnaseq*.tar.gz
 
 .PHONY: help \
 		prepare \
