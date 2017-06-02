@@ -95,29 +95,12 @@ def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output
 
 
 def catFiles(outputFile, inputFiles):
-    with open(outputFile, 'w') as outfile:
-        for fname in inputFiles:
-            with open(fname) as infile:
-                for line in infile:
-                    outfile.write(line)
-    return outputFile
-
-def gzipCatFiles(outputFile, inputFiles):
-    with gzip.open(outputFile, 'w') as outfile:
-        for fname in inputFiles:
-            with gzip.open(fname) as infile:
-                for line in infile:
-                    outfile.write(line)
-    return outputFile
-
-
-def zcatFiles(outputFile, inputFiles):
     '''
-    Routine to unzip and concatenate input files
-    using zcat which is much faster than using python 
-    gunzip
+    Routine to concatenate input files, gzipped or not using cat
+    For gzipped files this is much faster than using python gunzip
+    see https://www.biostars.org/p/136025/ and https://www.biostars.org/p/81924/
     '''
-    command = 'zcat'
+    command = 'cat'
     with open(outputFile, 'w') as outfile:
         subprocess.check_call([command] + inputFiles, stdout=outfile)
     return outputFile
@@ -156,12 +139,8 @@ def formatPairs(sample_pairs, work_mount):
     assert len(sample_pairs) % 2 == 0
     outputName = os.path.join(work_mount, os.path.basename(sample_pairs[0]))
     outputFiles = formatPair(outputName)
-    if not outputFiles[0].endswith('.gz'):
-        catFiles(outputFiles[0], sample_pairs[::2])
-        catFiles(outputFiles[1], sample_pairs[1::2])
-    else:
-        zcatFiles(outputFiles[0], sample_pairs[::2])
-        zcatFiles(outputFiles[1], sample_pairs[1::2])
+    catFiles(outputFiles[0], sample_pairs[::2])
+    catFiles(outputFiles[1], sample_pairs[1::2])
     return fileURL(outputFiles[0]) + ',' + fileURL(outputFiles[1])
 
 def formatSingles(sample_singles, work_mount):
@@ -173,10 +152,7 @@ def formatSingles(sample_singles, work_mount):
                 return baseName + ending
     sample_singles = sample_singles.split(',')
     output = formatSingle(os.path.join(work_mount, os.path.basename(sample_singles[0])))
-    if not output.endswith('.gz'):
-        catFiles(output, sample_singles)
-    else:
-        zcatFiles(output, sample_singles)
+    catFiles(output, sample_singles)
     return fileURL(output)
 
 def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cutadapt, save_bam,
