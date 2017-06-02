@@ -318,7 +318,6 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
     """
     job.fileStore.logToMaster('Consolidating output: {}'.format(config.uuid))
     work_dir = job.fileStore.getLocalTempDir()
-    config.uuid = 'SINGLE-END.' + config.uuid if not config.paired else config.uuid
     # Retrieve output file paths to consolidate
     rsem_tar, hugo_tar, kallisto_tar, fastqc_tar, bamqc_tar, star_tar = None, None, None, None, None, None
     rsem_id, hugo_id, star_id = None, None, None
