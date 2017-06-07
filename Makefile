@@ -129,14 +129,16 @@ check_running_on_jenkins:
 clean_docker:
 	-cd docker && make clean
 
-test_docker:
-	cd docker && make test
-
 docker:
-	cd docker && make
+	$(python) setup.py sdist$
+	cd docker && make && make test
+	rm ./dist/toil-rnaseq*.tar.gz
+
 
 push_docker: docker
+	$(python) setup.py sdist$
 	cd docker && make push
+	rm ./dist/toil-rnaseq*.tar.gz
 
 .PHONY: help \
 		prepare \
