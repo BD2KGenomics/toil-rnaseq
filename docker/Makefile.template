@@ -20,7 +20,7 @@ build: sdist Dockerfile
 
 push: build
 	# Requires ~/.dockercfg
-	docker push ${name}:${long_tag}
+	docker push ${name}:${short_tag}
 	
 test: build
 	python test.py ${long_tag}
