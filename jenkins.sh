@@ -15,7 +15,6 @@ make prepare
 make develop
 make test
 make docker
-make test_docker
 make clean
 make pypi
 make push_docker
