@@ -136,7 +136,9 @@ docker:
 
 
 push_docker: docker
+	$(python) setup.py sdist$
 	cd docker && make push
+	rm ./dist/toil-rnaseq*.tar.gz
 
 .PHONY: help \
 		prepare \
