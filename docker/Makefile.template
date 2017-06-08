@@ -2,12 +2,19 @@
 build_tool = runtime-container.DONE
 name = quay.io/ucsc_cgl/rnaseq-cgl-pipeline
 git_commit ?= $(shell git log --pretty=oneline -n 1 | cut -f1 -d " ")
-short_tag = 3.2.1-1--DOCKERVER
+
+#find the line with grep, trim whitespace, extract the text after the equals sign trim single quotes
+toil_rnaseq_version := $(shell grep '^version =' ../../version.py | tr -d [:space:] | cut -d= -f2- | tr -d "'")
+
+short_tag = ${toil_rnaseq_version}--DOCKERVER
 long_tag = ${short_tag}--${git_commit}
 
-build: Dockerfile
+sdist:
+	cp ../../dist/toil-rnaseq*.tar.gz ./toil-rnaseq.tar.gz
+
+build: sdist Dockerfile
 	docker build -t ${name}:${long_tag} .
-	-docker rmi ${name}:${short_tag}
+	-docker rmi -f ${name}:${short_tag}
 	docker tag ${name}:${long_tag} ${name}:${short_tag}
 	touch ${build_tool}
 
