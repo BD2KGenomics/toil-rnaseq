@@ -6,8 +6,8 @@ git_commit ?= $(shell git log --pretty=oneline -n 1 | cut -f1 -d " ")
 #find the line with grep, trim whitespace, extract the text after the equals sign trim single quotes
 toil_rnaseq_version := $(shell grep '^version =' ../../version.py | tr -d [:space:] | cut -d= -f2- | tr -d "'")
 
-short_tag = ${toil_rnaseq_version}--DOCKERVER
-long_tag = ${short_tag}--${git_commit}
+short_tag = ${toil_rnaseq_version}-DOCKERVER
+long_tag = ${short_tag}-${git_commit}
 
 sdist:
 	cp ../../dist/toil-rnaseq*.tar.gz ./toil-rnaseq.tar.gz
