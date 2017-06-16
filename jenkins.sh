@@ -16,7 +16,7 @@ make develop
 make test
 make docker
 make clean
-make pypi
 make push_docker
+make pypi
 
 rm -rf .env $TMPDIR
