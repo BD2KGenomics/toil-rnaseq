@@ -94,7 +94,7 @@ class RNASeqCGLTest(TestCase):
                     fastqc: true
                     cutadapt:
                     ssec:
-                    gtkey:
+                    gdc-token:
                     wiggle:
                     save-bam:
                     fwd-3pr-adapter: AGATCGGAAGAG

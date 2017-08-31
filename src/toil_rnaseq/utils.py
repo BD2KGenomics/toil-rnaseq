@@ -1,12 +1,16 @@
+from __future__ import print_function
+
 import os
 import textwrap
 from urlparse import urlparse
+
+from collections import OrderedDict, defaultdict
 
 from toil_lib import require
 from toil_lib.files import copy_files
 from toil_lib.urls import s3am_upload
 
-schemes = ('http', 'file', 's3', 'ftp', 'gnos')
+schemes = ('file', 'http', 's3', 'ftp', 'gdc')
 
 
 def parse_samples(path_to_manifest=None, sample_urls=None):
@@ -30,7 +34,7 @@ def parse_samples(path_to_manifest=None, sample_urls=None):
                     require(len(sample) == 4, 'Bad manifest format! '
                                               'Expected 4 tab separated columns, got: {}'.format(sample))
                     file_type, paired, uuid, url = sample
-                    require(file_type == 'tar' or file_type == 'fq',
+                    require(file_type == 'tar' or file_type == 'fq' or file_type == 'bam',
                             '1st column must be "tar" or "fq": {}'.format(sample[0]))
                     require(paired == 'paired' or paired == 'single',
                             '2nd column must be "paired" or "single": {}'.format(sample[1]))
@@ -53,51 +57,77 @@ def generate_config():
         # S3 URLs follow the convention: s3://bucket/directory/file.txt
         #
         # Comments (beginning with #) do not need to be removed. Optional parameters left blank are treated as false.
+        
         ##############################################################################################################
-        # Required: URL {scheme} to index tarball used by STAR
-        star-index: s3://cgl-pipeline-inputs/rnaseq_cgl/starIndex_hg38_no_alt.tar.gz
-
-        # Required: URL {scheme} to kallisto index file.
-        kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
-
-        # Required: URL {scheme} to reference tarball used by RSEM
-        rsem-ref: s3://cgl-pipeline-inputs/rnaseq_cgl/rsem_ref_hg38_no_alt.tar.gz
+        #                                           REQUIRED OPTIONS
+        ##############################################################################################################
 
         # Required: Output location of sample. Can be full path to a directory or an s3:// URL
-        # Warning: S3 buckets must exist prior to upload or it will fail.
-        output-dir:
+        # WARNING: S3 buckets must exist prior to upload, or it will fail.
+        output-dir: 
+        
+        ##############################################################################################################
+        #                           WORKFLOW OPTIONS (Alignment and Quantification)
+        ##############################################################################################################
+        
+        # URL {scheme} to index tarball used by STAR
+        star-index: s3://cgl-pipeline-inputs/rnaseq_cgl/starIndex_hg38_no_alt.tar.gz
+        
+        # URL {scheme} to reference tarball used by RSEM
+        # Running RSEM requires a star-index as a well as an rsem-ref
+        rsem-ref: s3://cgl-pipeline-inputs/rnaseq_cgl/rsem_ref_hg38_no_alt.tar.gz
 
-        # Optional: If true, will preprocess samples with cutadapt using adapter sequences.
+        # URL {scheme} to kallisto index file. 
+        kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
+        
+        ##############################################################################################################
+        #                                   WORKFLOW OPTIONS (Quality Control)
+        ##############################################################################################################
+        
+        # If true, will preprocess samples with cutadapt using adapter sequences.
         cutadapt: true
+        
+        # Adapter sequence to trim when running CutAdapt. Defaults set for Illumina
+        fwd-3pr-adapter: AGATCGGAAGAG
 
-        # Optional: If true, will run FastQC and include QC in sample output
+        # Adapter sequence to trim (for reverse strand) when running CutAdapt. Defaults set for Illumina
+        rev-3pr-adapter: AGATCGGAAGAG
+
+        # If true, will run FastQC and include QC in sample output
         fastqc: true
 
         # Optional: If true, will run BAM QC (as specified by California Kid's Cancer Comparison)
-        bamqc:
-
-        # Adapter sequence to trim. Defaults set for Illumina
-        fwd-3pr-adapter: AGATCGGAAGAG
-
-        # Adapter sequence to trim (for reverse strand). Defaults set for Illumina
-        rev-3pr-adapter: AGATCGGAAGAG
+        bamqc: 
+        
+        ##############################################################################################################
+        #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)
+        ##############################################################################################################        
 
         # Optional: Provide a full path to a 32-byte key used for SSE-C Encryption in Amazon
-        ssec:
+        ssec: 
 
-        # Optional: Provide a full path to a CGHub Key used to access GNOS hosted data
-        gtkey:
+        # Optional: Provide a full path to the token.txt used to download from the GDC
+        gdc-token:
+        
+        ##############################################################################################################
+        #                                   ADDITIONAL FILE OUTPUT OPTIONS
+        ##############################################################################################################        
 
         # Optional: If true, saves the wiggle file (.bg extension) output by STAR
         # WARNING: Requires STAR sorting, which has memory leak issues that can crash the pipeline. 
-        wiggle:
+        wiggle: 
 
-        # Optional: If true, saves the aligned bam (by coordinate) produced by STAR
+        # Optional: If true, saves the aligned BAM (by coordinate) produced by STAR
         # You must also specify an ssec key if you want to upload to the s3-output-dir
-        save-bam:
+        # as read data is assumed to be controlled access
+        save-bam: 
+        
+        ##############################################################################################################
+        #                                           DEVELOPER OPTIONS
+        ##############################################################################################################        
 
         # Optional: If true, uses resource requirements appropriate for continuous integration
-        ci-test:
+        ci-test: 
     """.format(scheme=[x + '://' for x in schemes])[1:])
 
 
@@ -106,7 +136,7 @@ def generate_manifest():
         #   Edit this manifest to include information pertaining to each sample to be run.
         #   There are 4 tab-separated columns: filetype, paired/unpaired, UUID, URL(s) to sample
         #
-        #   filetype    Filetype of the sample. Options: "tar" or "fq", for tarball/tarfile or fastq/fastq.gz
+        #   filetype    Filetype of the sample. Options: "tar", "fq", or "bam" for tarball, fastq/fastq.gz, or BAM
         #   paired      Indicates whether the data is paired or single-ended. Options:  "paired" or "single"
         #   UUID        This should be a unique identifier for the sample to be processed
         #   URL         A URL {scheme} pointing to the sample
@@ -118,6 +148,10 @@ def generate_manifest():
         #   Samples consisting of tarballs with fastq files inside must follow the file name convention of
         #   ending in an R1/R2 or _1/_2 followed by one of the 4 extensions: .fastq.gz, .fastq, .fq.gz, .fq
         #
+        #   BAMs are now accepted, but must have been aligned from paired reads not single-end reads.
+        #
+        #   GDC URLs may only point to individual BAM files, no other format is accepted.
+        #
         #   Examples of several combinations are provided below. Lines beginning with # are ignored.
         #
         #   tar paired  UUID_1  file:///path/to/sample.tar
@@ -125,6 +159,7 @@ def generate_manifest():
         #   tar single  UUID_3  http://sample-depot.com/single-end-sample.tar
         #   tar paired  UUID_4  s3://my-bucket-name/directory/paired-sample.tar.gz
         #   fq  single  UUID_5  s3://my-bucket-name/directory/single-end-file.fq
+        #   bam paired  UUID_6  gdc://1a5f5e03-4219-4704-8aaf-f132f23f26c7
         #
         #   Place your samples below, one per line.
         """.format(scheme=[x + '://' for x in schemes])[1:])
@@ -135,7 +170,7 @@ def generate_file(file_path, generate_func):
     Checks file existance, generates file, and provides message
 
     :param str file_path: File location to generate file
-    :param function generate_func: Function used to generate file
+    :param func generate_func: Function used to generate file
     """
     require(not os.path.exists(file_path), file_path + ' already exists!')
     with open(file_path, 'w') as f:
@@ -151,11 +186,12 @@ def move_or_upload(config, files):
         copy_files(file_paths=files, output_dir=config.output_dir)
 
 
-def cleanup_ids(job, ids_to_delete):
+def docker_path(path):
     """
-    Delete fileStoreIDs for files no longer needed
+    Converts a path to a file to a "docker path" which replaces the dirname with '/data'
 
-    :param JobFunctionWrappingJob job: passed automatically by Toil
-    :param list ids_to_delete: list of FileStoreIDs to delete
+    :param str path: Path to file
+    :return: Path for use in Docker parameters
+    :rtype: str
     """
-    [job.fileStore.deleteGlobalFile(x) for x in ids_to_delete if x is not None]
+    return os.path.join('/data', os.path.basename(path))

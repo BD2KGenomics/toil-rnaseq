@@ -36,6 +36,7 @@ from toil_lib.urls import download_url_job, s3am_upload
 # Local imports
 from qc import run_bam_qc
 from utils import cleanup_ids
+from utils import download_and_process_bam
 from utils import generate_config
 from utils import generate_file
 from utils import generate_manifest
@@ -59,22 +60,23 @@ def download_sample(job, sample, config):
     config.paired = True if config.paired == 'paired' else False
     config.cores = min(config.maxCores, multiprocessing.cpu_count())
     disk = '2G' if config.ci_test else '20G'
-    job.fileStore.logToMaster('UUID: {}\nURL: {}\nPaired: {}\nFile Type: {}\nCores: {}\nCIMode: {}'.format(
+    job.fileStore.logToMaster('\nUUID: {}\nURL: {}\nPaired: {}\nFile Type: {}\nCores: {}\nCIMode: {}'.format(
         config.uuid, config.url, config.paired, config.file_type, config.cores, config.ci_test))
     # Download or locate local file and place in the jobStore
     tar_id = None
     fastq_ids = []
     if config.file_type == 'tar':
-        tar_id = job.addChildJobFn(download_url_job, config.url, cghub_key_path=config.gtkey,
-                                   s3_key_path=config.ssec, disk=disk).rv()
+        tar_id = job.addChildJobFn(download_url_job, config.url, s3_key_path=config.ssec, disk=disk).rv()
+    elif config.file_type == 'bam':
+        # Do nothing, BAM's are handled in the next step
+        pass
     else:
         urls = config.url.split(',')
         if config.paired:
             require(len(urls) % 2 == 0, 'Fastq pairs must have multiples of 2 URLS separated by comma')
         config.gz = True if urls[0].endswith('gz') else None
         for url in urls:
-            fastq_ids.append(job.addChildJobFn(download_url_job, url, cghub_key_path=config.gtkey,
-                                               s3_key_path=config.ssec, disk=disk).rv())
+            fastq_ids.append(job.addChildJobFn(download_url_job, url, s3_key_path=config.ssec, disk=disk).rv())
     job.addFollowOnJobFn(preprocessing_declaration, config, tar_id, fastq_ids)
 
 
@@ -91,6 +93,9 @@ def preprocessing_declaration(job, config, tar_id=None, fastq_ids=None):
         job.fileStore.logToMaster('Processing sample tar and queueing CutAdapt for: ' + config.uuid)
         disk = 5 * tar_id.size
         preprocessing_output = job.addChildJobFn(process_sample, config, input_tar=tar_id, disk=disk).rv()
+    elif config.file_type == 'bam':
+        disk = '2G' if config.ci_test else '100G'
+        preprocessing_output = job.addChildJobFn(download_and_process_bam, config, disk=disk).rv()
     else:
         disk = 3 * sum([x.size for x in fastq_ids])
         preprocessing_output = job.addChildJobFn(process_sample, config, fastq_ids=fastq_ids, disk=disk).rv()
@@ -383,7 +388,7 @@ def consolidate_output(job, config, kallisto_output, rsem_star_output, fastqc_ou
 
 def sort_and_save_bam(job, config, bam_id):
     """
-    Sorts STAR's output bam using samtools. STAR has a sporadic memory leak when sorting. 
+    Sorts STAR's output bam using samtools
     
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
