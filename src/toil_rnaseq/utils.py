@@ -47,7 +47,10 @@ def parse_samples(path_to_manifest=None, sample_urls=None):
 
 def generate_config():
     return textwrap.dedent("""
-        # RNA-seq CGL Pipeline configuration file
+        ##############################################################################################################
+        #                               TOIL RNA-SEQ PIPELINE CONFIGURATION FILE                                     #
+        ##############################################################################################################
+
         # This configuration file is formatted in YAML. Simply write the value (at least one space) after the colon.
         # Edit the values in this configuration file and then rerun the pipeline: "toil-rnaseq run"
         # Just Kallisto or STAR/RSEM can be run by supplying only the inputs to those tools
@@ -59,7 +62,7 @@ def generate_config():
         # Comments (beginning with #) do not need to be removed. Optional parameters left blank are treated as false.
         
         ##############################################################################################################
-        #                                           REQUIRED OPTIONS
+        #                                           REQUIRED OPTIONS                                                 #
         ##############################################################################################################
 
         # Required: Output location of sample. Can be full path to a directory or an s3:// URL
@@ -67,7 +70,7 @@ def generate_config():
         output-dir: 
         
         ##############################################################################################################
-        #                           WORKFLOW OPTIONS (Alignment and Quantification)
+        #                           WORKFLOW OPTIONS (Alignment and Quantification)                                  #
         ##############################################################################################################
         
         # URL {scheme} to index tarball used by STAR
@@ -81,7 +84,7 @@ def generate_config():
         kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
         
         ##############################################################################################################
-        #                                   WORKFLOW OPTIONS (Quality Control)
+        #                                   WORKFLOW OPTIONS (Quality Control)                                       #
         ##############################################################################################################
         
         # If true, will preprocess samples with cutadapt using adapter sequences.
@@ -100,17 +103,17 @@ def generate_config():
         bamqc: 
         
         ##############################################################################################################
-        #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)
+        #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)                       #
         ##############################################################################################################        
 
         # Optional: Provide a full path to a 32-byte key used for SSE-C Encryption in Amazon
         ssec: 
 
         # Optional: Provide a full path to the token.txt used to download from the GDC
-        gdc-token:
+        gdc-token: 
         
         ##############################################################################################################
-        #                                   ADDITIONAL FILE OUTPUT OPTIONS
+        #                                   ADDITIONAL FILE OUTPUT OPTIONS                                           #
         ##############################################################################################################        
 
         # Optional: If true, saves the wiggle file (.bg extension) output by STAR
@@ -123,12 +126,69 @@ def generate_config():
         save-bam: 
         
         ##############################################################################################################
-        #                                           DEVELOPER OPTIONS
+        #                                           DEVELOPER OPTIONS                                                #
         ##############################################################################################################        
 
         # Optional: If true, uses resource requirements appropriate for continuous integration
         ci-test: 
     """.format(scheme=[x + '://' for x in schemes])[1:])
+
+
+def user_input_config(config_path):
+    """
+    User input of pipeline configuration file
+
+    :param str config_path: Path to configuration file
+    :return: Configuration file path or None if user skips
+    :rtype: str
+    """
+    print('\n\t\t\tUser Input of Toil-rnaseq Configuration File\n')
+    start = raw_input('Type Y/y and hit enter to continue: ').lower()
+    if start != 'y':
+        return None
+    print('User will see comments for a configuation option followed by "<OPTION>: [Default Value]"')
+    print('\tN/n to skip\n\ttrue/false for boolean statements\n\tq/quit to stop\n\tEnter key to submit option\n')
+
+    config = OrderedDict()
+    comments = defaultdict(list)
+    quit_flag = False
+    config_template = generate_config().split('\n')
+    for line in config_template:
+        if not line.startswith('#') and line:
+            option, default = line.split(': ')
+
+            # Fetch comments for current option
+            index = config_template.index(line) - 1
+            while True:
+                comments[option].insert(0, config_template[index])
+                index -= 1
+                if not config_template[index]:
+                    break
+            if quit_flag:
+                config[option] = default
+                continue
+            print('\n'.join(comments[option]) + '\n\n')
+
+            # Show option and get user input
+            user_input = None
+            while not user_input:
+                user_input = raw_input('\n{}: [{}]\n\tUser Input: '.format(option, default)).lower()
+            if user_input == 'q' or user_input == 'quit':
+                quit_flag = True
+                config[option] = default
+                continue
+            elif user_input == 'n':
+                config[option] = default
+                continue
+            else:
+                config[option] = user_input
+
+    print('Writing out configuration file to: {}'.format(config_path))
+    with open(config_path, 'w') as f:
+        for option in config:
+            f.write('\n'.join(comments[option]))
+            f.write('\n{}: {}\n\n'.format(option, config[option]))
+    return config_path
 
 
 def generate_manifest():
@@ -139,7 +199,7 @@ def generate_manifest():
         #   filetype    Filetype of the sample. Options: "tar", "fq", or "bam" for tarball, fastq/fastq.gz, or BAM
         #   paired      Indicates whether the data is paired or single-ended. Options:  "paired" or "single"
         #   UUID        This should be a unique identifier for the sample to be processed
-        #   URL         A URL {scheme} pointing to the sample
+        #   URL         A URL starting with {scheme} that points to the sample
         #
         #   If sample is being submitted as a fastq or several fastqs, provide URLs separated by a comma.
         #   If providing paired fastqs, alternate the fastqs so every R1 is paired with its R2 as the next URL.
@@ -148,9 +208,9 @@ def generate_manifest():
         #   Samples consisting of tarballs with fastq files inside must follow the file name convention of
         #   ending in an R1/R2 or _1/_2 followed by one of the 4 extensions: .fastq.gz, .fastq, .fq.gz, .fq
         #
-        #   BAMs are now accepted, but must have been aligned from paired reads not single-end reads.
+        #   BAMs are accepted, but must have been aligned from paired reads NOT single-end reads.
         #
-        #   GDC URLs may only point to individual BAM files, no other format is accepted.
+        #   GDC URLs may only point to individual BAM files. No other format is accepted.
         #
         #   Examples of several combinations are provided below. Lines beginning with # are ignored.
         #
@@ -165,17 +225,64 @@ def generate_manifest():
         """.format(scheme=[x + '://' for x in schemes])[1:])
 
 
+def user_input_manifest(manifest_path):
+    """
+    User input of pipeline manifest file
+
+    :param str manifest_path: Path to write out manifest
+    :return: Path to manifest or None if user skips
+    :rtype: str
+    """
+    print('\n\t\t\tUser Input of Toil-rnaseq Manifest')
+    start = raw_input('Type Y/y and hit enter to continue: ').lower()
+    if start != 'y':
+        return None
+    print('\n'.join(generate_manifest().split('\n')[:-1]))  # Don't print last line of manifest
+    print('\n\nFollow the prompts to enter sample information, based on the information above.\n')
+
+    samples = []
+    while True:
+        filetype, paired, uuid = None, None, None
+        url = 'bad-url'
+        while filetype not in ['tar', 'fq', 'bam']:
+            filetype = raw_input('Enter the filetype of the sample: ')
+        while paired not in ['paired', 'single']:
+            paired = raw_input('Enter whether sample is paired or single-end: ')
+        uuid = raw_input('Enter unique name (or UUID) of sample: ')
+        while urlparse(url).scheme not in schemes:
+            url = raw_input('Enter URL for sample: ')
+        samples.append((filetype, paired, uuid, url))
+
+        # Escape loop
+        user = raw_input('\nType q/quit to exit or enter any other key to add more samples\n').lower()
+        if user == 'q' or user == 'quit':
+            break
+
+    print('Writing out manifest file to: {}'.format(manifest_path))
+    with open(manifest_path, 'w') as f:
+        f.write(generate_manifest() + '\n')
+        for sample in samples:
+            assert len(sample) == 4, 'Something is wrong. Expected 4 options per sample: {}'.format(sample)
+            f.write('\t'.join(sample) + '\n')
+    return manifest_path
+
+
 def generate_file(file_path, generate_func):
     """
     Checks file existance, generates file, and provides message
 
     :param str file_path: File location to generate file
     :param func generate_func: Function used to generate file
+    :return: Path to file
+    :rtype: str
     """
-    require(not os.path.exists(file_path), file_path + ' already exists!')
-    with open(file_path, 'w') as f:
-        f.write(generate_func())
-    print('\t{} has been generated in the current working directory.'.format(os.path.basename(file_path)))
+    if os.path.exists(file_path):
+        print('File "{}" already exists! Doing nothing.'.format(file_path))
+    else:
+        with open(file_path, 'w') as f:
+            f.write(generate_func())
+        print('\t{} has been generated in the current working directory.'.format(os.path.basename(file_path)))
+    return file_path
 
 
 def move_or_upload(config, files):

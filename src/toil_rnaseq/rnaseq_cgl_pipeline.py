@@ -34,10 +34,10 @@ from toil_lib.tools.quantifiers import run_rsem_postprocess
 from toil_lib.urls import download_url_job, s3am_upload
 
 # Local imports
+from jobs import cleanup_ids
+from jobs import download_and_process_bam
 from qc import run_bam_qc
-from utils import cleanup_ids
-from utils import download_and_process_bam
-from utils import generate_config
+from utils import generate_config, user_input_config, user_input_manifest
 from utils import generate_file
 from utils import generate_manifest
 from utils import move_or_upload
@@ -413,16 +413,17 @@ def sort_and_save_bam(job, config, bam_id):
 
 def main():
     """
+                        Toil RNA-seq Pipeline
     Computational Genomics Lab, Genomics Institute, UC Santa Cruz
-    Toil RNA-seq pipeline
 
-    RNA-seq fastqs are combined, aligned, and quantified with 2 different methods (RSEM and Kallisto)
+
+    RNA-seq samples are combined, aligned, and quantified with 2 different methods (RSEM and Kallisto)
 
     General usage:
     1. Type "toil-rnaseq generate" to create an editable manifest and config in the current working directory.
     2. Parameterize the pipeline by editing the config.
     3. Fill in the manifest with information pertaining to your samples.
-    4. Type "toil-rnaseq run [jobStore]" to execute the pipeline.
+    4. Type "toil-rnaseq run ./jobStore" to execute the pipeline.
 
     Please read the README.md located in the source directory or at:
     https://github.com/BD2KGenomics/toil-scripts/tree/master/src/toil_scripts/rnaseq_cgl
@@ -445,7 +446,7 @@ def main():
     5 = RSEM Post-processing
     6 = FastQC
     7 = Kallisto
-    8 = BamQC (as specified by CKCC at UC Santa Cruz)
+    8 = BamQC (as specified by Treehouse at UC Santa Cruz)
     9 = Consoliate output and upload to S3
     =======================================
     Dependencies
@@ -457,20 +458,27 @@ def main():
     parser = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawTextHelpFormatter)
     subparsers = parser.add_subparsers(dest='command')
 
-    # Generate subparsers
-    subparsers.add_parser('generate-config', help='Generates an editable config in the current working directory.')
-    subparsers.add_parser('generate-manifest', help='Generates an editable manifest in the current working directory.')
+    # Input subparsers
     subparsers.add_parser('generate', help='Generates a config and manifest in the current working directory.')
+    subparsers.add_parser('config-input', help='Allows user to configure pipeline by following prompts.')
+    subparsers.add_parser('manifest-input', help='Allows user to input samples to the manifest by following prompts.')
 
     # Run subparser
     parser_run = subparsers.add_parser('run', help='Runs the RNA-seq pipeline')
     group = parser_run.add_mutually_exclusive_group()
-    parser_run.add_argument('--config', default='config-toil-rnaseq.yaml', type=str,
-                            help='Path to the (filled in) config file, generated with "generate-config". '
+
+    # Run arguments
+    cwd = os.getcwd()
+    config_path = os.path.join(cwd, 'config-toil-rnaseq.yaml')
+    parser_run.add_argument('--config', default=config_path, type=str,
+                            help='Path to (filled in) config file, created with "generate" or "config-input". '
                                  '\nDefault value: "%(default)s"')
-    group.add_argument('--manifest', default='manifest-toil-rnaseq.tsv', type=str,
-                       help='Path to the (filled in) manifest file, generated with "generate-manifest". '
+
+    manifest_path = os.path.join(cwd, 'manifest-toil-rnaseq.tsv')
+    group.add_argument('--manifest', default=manifest_path, type=str,
+                       help='Path to (filled in) manifest file, created with "generate" or "manifest-input". '
                             '\nDefault value: "%(default)s"')
+
     group.add_argument('--samples', default=None, nargs='+', type=str,
                        help='Space delimited sample URLs (any number). Samples must be tarfiles/tarballs that contain '
                             'fastq files. URLs follow the format: http://foo.com/sample.tar, '
@@ -488,11 +496,13 @@ def main():
     args = parser.parse_args()
 
     # Parse subparsers related to generation of config and manifest
-    cwd = os.getcwd()
-    if args.command == 'generate-config' or args.command == 'generate':
-        generate_file(os.path.join(cwd, 'config-toil-rnaseq.yaml'), generate_config)
-    if args.command == 'generate-manifest' or args.command == 'generate':
-        generate_file(os.path.join(cwd, 'manifest-toil-rnaseq.tsv'), generate_manifest)
+    if args.command == 'generate':
+        generate_file(config_path, generate_config)
+        generate_file(manifest_path, generate_manifest)
+    elif args.command == 'config-input':
+        user_input_config(config_path)
+    elif args.command == 'manifest-input':
+        user_input_manifest(manifest_path)
 
     # Pipeline execution
     elif args.command == 'run':
