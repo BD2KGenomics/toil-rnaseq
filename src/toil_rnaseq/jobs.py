@@ -56,17 +56,24 @@ def assert_bam_is_paired_end(job, bam_path, region='chr6'):
     :param str bam_path: Path to BAM
     """
     # Check if BAM index exists, otherwise index BAM
-    if not os.path.exists(os.path.splitext(bam_path)[0] + '.bai'):
+    bam_no_ext = os.path.splitext(bam_path)[0]
+    if not os.path.exists(bam_no_ext + '.bai') and not os.path.exists(bam_no_ext + '.bam.bai'):
         index_bam(job, bam_path)
 
     docker_bam_path = docker_path(bam_path)
     work_dir = os.path.dirname(os.path.abspath(bam_path))
-    parameters = ['view', '-c', '-f', '1',
-                  docker_bam_path,
-                  region]  # Chr6 chosen for testing, any region with reads will work
-    out = dockerCheckOutput(job, workDir=work_dir, parameters=parameters,
-                            tool='quay.io/ucsc_cgl/samtools:1.5--98b58ba05641ee98fa98414ed28b53ac3048bc09')
-    assert int(out.strip()) != 0, 'BAM is not paired-end, aborting run.'
+
+    # Check for both "chr" and no "chr" format
+    results = []
+    regions = [region, 'chr' + region] if 'chr' not in region else [region, region.lstrip('chr')]
+    for r in regions:
+        parameters = ['view', '-c', '-f', '1',
+                      docker_bam_path,
+                      r]  # Chr6 chosen for testing, any region with reads will work
+        out = dockerCheckOutput(job, workDir=work_dir, parameters=parameters,
+                                tool='quay.io/ucsc_cgl/samtools:1.5--98b58ba05641ee98fa98414ed28b53ac3048bc09')
+        results.append(int(out.strip()))
+    assert any(x for x in results if x != 0), 'BAM is not paired-end, aborting run.'
 
 
 def index_bam(job, bam_path):

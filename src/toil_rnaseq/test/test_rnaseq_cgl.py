@@ -40,6 +40,7 @@ class RNASeqCGLTest(TestCase):
         self.input_dir = urlparse('s3://cgl-pipeline-inputs/rnaseq_cgl/ci')
         self.output_dir = urlparse('s3://cgl-driver-projects/test/ci/%s' % uuid4())
         self.sample = urlparse(self.input_dir.geturl() + '/chr6_sample.tar.gz')
+        self.bam_sample = urlparse(self.input_dir.geturl() + '/chr6.test.bam')
         self.workdir = tempfile.mkdtemp()
         jobStore = os.getenv('TOIL_SCRIPTS_TEST_JOBSTORE', os.path.join(self.workdir, 'jobstore-%s' % uuid4()))
         toilOptions = shlex.split(os.environ.get('TOIL_SCRIPTS_TEST_TOIL_OPTIONS', ''))
@@ -55,20 +56,25 @@ class RNASeqCGLTest(TestCase):
 
     def test_manifest(self):
         num_samples = int(os.environ.get('TOIL_SCRIPTS_TEST_NUM_SAMPLES', '1'))
-        self._run(self.base_command, '--manifest', self._generate_manifest(num_samples))
+        self._run(self.base_command, '--manifest', self._generate_manifest(num_samples=num_samples))
         self._assertOutput(num_samples)
+
+    def test_bam(self):
+        self._run(self.base_command, '--manifest', self._generate_manifest(bam=True))
+        self._assertOutput(bam=True)
 
     def _run(self, *args):
         args = list(concat(*args))
         log.info('Running %r', args)
         subprocess.check_call(args)
 
-    def _assertOutput(self, num_samples=None):
+    def _assertOutput(self, num_samples=None, bam=False):
         with closing(S3Connection()) as s3:
             bucket = Bucket(s3, self.output_dir.netloc)
             prefix = self.output_dir.path[1:]
             for i in range(1 if num_samples is None else num_samples):
-                output_file = self._sample_name(None if num_samples is None else i) + '.tar.gz'
+                value = None if num_samples is None else i
+                output_file = self._sample_name(value, bam=bam) + '.tar.gz'
                 output_file = 'FAIL.' + output_file  # This flag is added by bamQC
                 key = bucket.get_key(posixpath.join(prefix, output_file), validate=True)
                 # FIXME: We may want to validate the output a bit more
@@ -105,16 +111,23 @@ class RNASeqCGLTest(TestCase):
                                     input_dir=self.input_dir.geturl()))
         return path
 
-    def _generate_manifest(self, num_samples):
+    def _generate_manifest(self, num_samples=1, bam=False):
         path = os.path.join(self.workdir, 'manifest-toil-rnaseq.tsv')
-        with open(path, 'w') as f:
-            f.write('\n'.join('\t'.join(['tar', 'paired', self._sample_name(i), self.sample.geturl()])
-                              for i in range(num_samples)))
+        if bam:
+            with open(path, 'w') as f:
+                f.write('\t'.join(['bam', 'paired', 'chr6.test', self.bam_sample.geturl()]) + '\n')
+        else:
+            with open(path, 'w') as f:
+                f.write('\n'.join('\t'.join(['tar', 'paired', self._sample_name(i), self.sample.geturl()])
+                                  for i in range(num_samples)))
         return path
 
-    def _sample_name(self, i=None):
-        uuid = posixpath.basename(self.sample.path).split('.')
-        while uuid[-1] in ('gz', 'tar', 'zip'):
+    def _sample_name(self, i=None, bam=False):
+        if bam:
+            uuid = posixpath.basename(self.bam_sample.path).split('.')
+        else:
+            uuid = posixpath.basename(self.sample.path).split('.')
+        while uuid[-1] in ('gz', 'tar', 'zip', 'bam'):
             uuid.pop()
         uuid = '.'.join(uuid)
         if i is not None:
