@@ -43,7 +43,7 @@ dct:creator:
 
 requirements:
   - class: DockerRequirement
-    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.3.4-1.12.3"
+    dockerPull: "quay.io/ucsc_cgl/rnaseq-cgl-pipeline:3.3.5-1.12.3"
 
 hints:
   - class: ResourceRequirement
