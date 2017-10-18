@@ -158,10 +158,18 @@ def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cut
                     save_wiggle, bamqc):
     cutadapt = True if not disable_cutadapt else False
     bamqc = bool(bamqc)
+
+    if star_path:
+        star_path = "file://" + star_path
+    if kallisto_path:
+        kallisto_path = "file://" + kallisto_path
+    if rsem_path:
+        rsem_path = "file://" + rsem_path
+
     return textwrap.dedent("""
-        star-index: file://{star_path}
-        kallisto-index: file://{kallisto_path}
-        rsem-ref: file://{rsem_path}
+        star-index: {star_path}
+        kallisto-index: {kallisto_path}
+        rsem-ref: {rsem_path}
         output-dir: {output_dir}
         cutadapt: {cutadapt}
         fastqc: true
@@ -174,7 +182,6 @@ def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cut
         save-bam: {save_bam}
         ci-test:
     """[1:].format(**locals()))
-
 
 def main():
     """
@@ -292,9 +299,13 @@ def main():
             log.info('Paired FASTQS to run: {}'.format('\t'.join(args.sample_paired)))
         if samples == args.sample_single:
             log.info('Single FASTQS to run: {}'.format('\t'.join(args.sample_single)))
-    require(all(x.startswith('/') for x in [args.star, args.kallisto, args.rsem]),
+
+    #print("star {} kallisto {} rsem {} args".format(args.star, args.kallisto, args.rsem))
+    #Input for star and rsem will be empty if user wants to run kallisto only so test for not x
+    require(all( (x.startswith('/') or not x) for x in [args.star, args.kallisto, args.rsem]),
             "Sample inputs must point to a file's full path, "
             "e.g. '/full/path/to/kallisto_hg38.idx'.")
+
     # Output log information
     log.info('The work mount is: {}'.format(work_mount))
     log.info('Pipeline input locations: \n{}\n{}\n{}'.format(args.star, args.rsem, args.kallisto))
