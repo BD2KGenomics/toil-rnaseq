@@ -81,7 +81,7 @@ pypi: check_venv check_clean_working_copy check_running_on_jenkins
 		from pkg_resources import parse_version as pv;\
 		import os;\
 		print "--tag-build=.dev" + os.getenv("BUILD_NUMBER") if pv(v).is_prerelease else ""'` \
-	&& $(python) setup.py egg_info $$tag_build sdist bdist_egg upload )
+	&& $(python) setup.py egg_info $$tag_build sdist bdist_egg && twine upload dist/* )
 clean_pypi:
 	- rm -rf build/
 
@@ -99,10 +99,10 @@ prepare: check_venv
 	virtualenv s3am && s3am/bin/pip install s3am==2.0
 	mkdir -p bin
 	ln -snf ${PWD}/s3am/bin/s3am bin/
-	$(pip) install pytest==2.8.3 toil[aws]==3.3.1
+	$(pip) install pytest==2.8.3 toil[aws]==3.3.1 twine
 clean_prepare: check_venv
 	rm -rf bin s3am
-	- $(pip) uninstall -y pytest toil
+	- $(pip) uninstall -y pytest toil twine
 
 check_venv:
 	@$(python) -c 'import sys; sys.exit( int( not hasattr(sys, "real_prefix") ) )' \
