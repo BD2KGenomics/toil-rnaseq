@@ -1,30 +1,36 @@
-## University of California, Santa Cruz Genomics Institute
-### Guide: Running the CGL HG38 RNA-seq Pipeline using Toil
+## Computational Genomics Lab, Genomics Institute, UC Santa Cruz
+## Toil RNA-Seq Pipeline
+#### Scalable, reproducible, and robust RNA-seq expression quantification. 
 
-This guide attempts to walk the user through running this pipeline from start to finish. If there are any questions
-please contact [John Vivian](jtvivian@gmail.com). If you find any errors or corrections please feel free to make a 
-pull request. Feedback of any kind is appreciated.
+The [Toil](https://github.com/BD2KGenomics/toil) RNA-seq workflow converts RNA sqeuencing data into gene- and 
+transcript-level expression quantification. 
 
-- [Dependencies](#dependencies)
-- [Installation](#installation)
-- [Usage](#general-usage)
+Please open [issues](https://github.com/BD2KGenomics/toil-rnaseq/issues) for any bugs, errors, corrections, 
+or feature requests. 
+
+If there are any questions not answered by this README or the [wiki](https://github.com/BD2KGenomics/toil-rnaseq/wiki), 
+contact [John Vivian](jtvivian@gmail.com). 
+
+### Appendix
+
+- [Dependencies and Installation](#dependencies-and-installation)
+- [Quickstart](#general-usage)
 
 For detailed information and troubleshooting, see the [Wiki](https://github.com/BD2KGenomics/toil-rnaseq/wiki)
-- [Pipeline Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Pipeline-Inputs)
+- [Workflow Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Workflow-Inputs)
+- [Examples](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Examples)
 - [Methods](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Methods)
 - [Troubleshooting](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Troubleshooting)
 
 
 ## Overview
 
-RNA-seq fastqs are combined, aligned, and quantified with 2 different methods (RSEM and Kallisto)
+![Toil-RNAseq DAG](/imgs/toil-rnaseq.png)
 
-This pipeline produces a tarball (tar.gz) file for a given sample with 3 main subdirectories: Kallisto, RSEM, and QC.
-If the pipeline is run with all possible options (`fastqc`, `bamqc`, etc), the output tar
-will have the following structure (once uncompressed):
+This workflow takes RNA sequencing reads (fastq / BAM) as input and outputs the following (if all options enabled):
 
 ```
-SAMPLE
+<SAMPLE>
 ├── Kallisto
 │   ├── abundance.h5
 │   ├── abundance.tsv
@@ -44,6 +50,11 @@ SAMPLE
 │   └── STAR
 │       ├── Log.final.out
 │       └── SJ.out.tab
+├── Hera
+│   ├── abundance.h5
+│   ├── abundance.tsv
+│   ├── fusion.bedpe (paired-end data only)
+│   └── summary
 └── RSEM
     ├── Hugo
     │   ├── rsem_genes.hugo.results
@@ -51,16 +62,16 @@ SAMPLE
     ├── rsem_genes.results
     └── rsem_isoforms.results
 ```
-If the user selects options such as `save-bam` or `wiggle`, additional files will appear in the output directory:
+If the user selects options such as `save-star-bam`, or `wiggle`, additional files will appear in the output directory:
 
 - SAMPLE.sorted.bam OR SAMPLE.sortedByCoord.md.bam if `bamQC` step is enabled.
 - SAMPLE.wiggle.bg
 
 The output tarball is prepended with the unique name for the sample (e.g. SAMPLE.tar.gz). 
 
-# Dependencies
+# Dependencies and Installation
 
-This pipeline has been tested on Ubuntu 14.04, 16.04 and Mac OSX, but should also run on other unix based systems.  
+This workflow has been tested on Ubuntu 14.04, 16.04 and Mac OSX, but should also run on other unix based systems.  
 `apt-get` and `pip` often require `sudo` privilege, so if the below commands fail, try prepending `sudo`.  
 If you do not have `sudo`  privileges you will need to build these tools from source, 
 or bug a sysadmin about how to get them (they don't mind). 
@@ -79,99 +90,37 @@ or bug a sysadmin about how to get them (they don't mind).
     
 #### System Dependencies
 
-This pipeline needs approximately 50G of RAM in order to run STAR alignment. 
+The workflow requires approximately 50-60G of RAM in order to run STAR alignment. 
 
-# Installation
+###  Installation
 
-The CGL RNA-seq pipeline is pip installable!
+The Toil RNA-seq workflow is pip installable!
 
-For most users, the preferred installation method is inside of a virtualenv to avoid dependency conflicts: 
+For most users, the preferred installation method is inside a virtualenv to avoid dependency conflicts: 
 
 - `virtualenv ~/toil-rnaseq` 
 - `source ~/toil-rnaseq/bin/activate`
-- `pip install toil`
 - `pip install toil-rnaseq`
 
-After installation, the pipeline can be executed by typing `toil-rnaseq` into the teriminal.
+After installation, the workflow can be executed by typing `toil-rnaseq` into the teriminal.
 
-If there is an existing, system-wide installation of **Toil**, as is the case when using **CGCloud**, 
-the `pip install toil` step should be skipped and the virtualenv should be invoked with `--system-site-packages`. 
-This way the existing Toil installation will be available inside the virtualenv.
+# Quickstart
 
-# General Usage
-
-First, obtain all of the necessary [inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Pipeline-Inputs).
+First, obtain all of the necessary [workflow inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Workflow-Inputs).
 
 Then, type `toil-rnaseq` to get basic help menu and instructions
  
 1. Type `toil-rnaseq generate` to create an editable manifest and config in the current working directory.
-2. Parameterize the pipeline by editing the config.
+2. Parameterize the workflow by editing the config.
 3. Fill in the manifest with information pertaining to your samples.
-4. Type `toil-rnaseq run [jobStore]` to execute the pipeline.
+4. Type `toil-rnaseq run [jobStore]` to execute the workflow.
 
-### Example Commands
+### Citation
 
-Run sample(s) locally using the manifest
-
-1. `toil-rnaseq generate`
-2. Fill in config and manifest
-3. `toil-rnaseq run ./example-jobstore`
-
-Toil options can be appended to `toil-rnaseq run`, for example:
-`toil-rnaseq run ./example-jobstore --retryCount=1 --workDir=/data`
-
-For a complete list of Toil options, just type `toil-rnaseq run -h`
-
-Run a variety of samples locally
-
-1. `toil-rnaseq generate-config`
-2. Fill in config
-3. `toil-rnaseq run ./example-jobstore --retryCount=1 --workDir=/data --samples \
-    s3://example-bucket/sample_1.tar file:///full/path/to/sample_2.tar https://sample-depot.com/sample_3.tar`
-
-### Example Config
+If you use this workflow to produce data for published research please cite the Toil white paper:
 
 ```
-star-index: s3://cgl-pipeline-inputs/rnaseq_cgl/ci/starIndex_chr6.tar.gz
-kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
-rsem-ref: s3://cgl-pipeline-inputs/rnaseq_cgl/ci/rsem_ref_chr6.tar.gz
-output-dir: /data/my-toil-run
-cutadapt: true
-fastqc: true
-bamqc:
-fwd-3pr-adapter: AGATCGGAAGAG
-rev-3pr-adapter: AGATCGGAAGAG
-ssec:
-gtkey:
-wiggle:
-save-bam:
-ci-test:
+Vivian, J. et al. 
+Toil enables reproducible, open source, big biomedical data analyses. 
+Nat Biotech 35, 314–316 (2017).
 ```
-
-Example with local input files
-
-```
-star-index: file://data/starIndex_chr6.tar.gz
-kallisto-index: file://data/kallisto_hg38.idx
-rsem-ref: file://data/rsem_ref_chr6.tar.gz
-output-dir: /data/my-toil-run
-cutadapt: true
-fastqc: true
-bamqc:
-fwd-3pr-adapter: AGATCGGAAGAG
-rev-3pr-adapter: AGATCGGAAGAG
-ssec:
-gtkey:
-wiggle:
-save-bam:
-ci-test:
-```
-
-## Distributed Run
-
-To run on a distributed AWS cluster, see [CGCloud](https://github.com/BD2KGenomics/cgcloud) for instance provisioning, 
-then run `toil-rnaseq run aws:us-west-2:example-jobstore-bucket --batchSystem=mesos --mesosMaster mesos-master:5050`
-to use the AWS job store and mesos batch system. 
-
-I have written an SOP for UCSC's Core Operations group that is 
-[available here](https://github.com/BD2KGenomics/core-operations/blob/master/SOPs/toil-rnaseq.sop.md). 

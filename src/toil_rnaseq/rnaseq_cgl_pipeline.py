@@ -45,7 +45,7 @@ from utils import parse_samples
 from utils import schemes
 
 
-# Start of pipeline
+# Start of workflow
 def download_sample(job, sample, config):
     """
     Download sample and store unique attributes
@@ -99,12 +99,12 @@ def preprocessing_declaration(job, config, tar_id=None, fastq_ids=None):
     else:
         disk = 3 * sum([x.size for x in fastq_ids])
         preprocessing_output = job.addChildJobFn(process_sample, config, fastq_ids=fastq_ids, disk=disk).rv()
-    job.addFollowOnJobFn(pipeline_declaration, config, preprocessing_output)
+    job.addFollowOnJobFn(workflow_declaration, config, preprocessing_output)
 
 
-def pipeline_declaration(job, config, preprocessing_output):
+def workflow_declaration(job, config, preprocessing_output):
     """
-    Define pipeline edges that use the fastq files
+    Define workflow edges that use the fastq files
 
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param Namespace config: Argparse Namespace object containing argument inputs
@@ -239,7 +239,7 @@ def process_sample(job, config, input_tar=None, fastq_ids=None):
     :param Namespace config: Argparse Namespace object containing argument inputs
     :param FileID input_tar: fileStoreID of the tarball (if applicable)
     :param list[FileID] fastq_ids: FileStoreIDs of fastq files
-    :return: FileStoreID from Cutadapt or from fastqs directly if pipeline was run without Cutadapt option
+    :return: FileStoreID from Cutadapt or from fastqs directly if workflow was run without Cutadapt option
     :rtype: tuple(FileID, FileID)
     """
     job.fileStore.logToMaster('Processing sample: {}'.format(config.uuid))
@@ -413,58 +413,30 @@ def sort_and_save_bam(job, config, bam_id):
 
 def main():
     """
-                        Toil RNA-seq Pipeline
+                        Toil RNA-seq Workflow
     Computational Genomics Lab, Genomics Institute, UC Santa Cruz
-
 
     RNA-seq samples are combined, aligned, and quantified with 2 different methods (RSEM and Kallisto)
 
     General usage:
     1. Type "toil-rnaseq generate" to create an editable manifest and config in the current working directory.
-    2. Parameterize the pipeline by editing the config.
+    2. Parameterize the workflow by editing the config.
     3. Fill in the manifest with information pertaining to your samples.
-    4. Type "toil-rnaseq run ./jobStore" to execute the pipeline.
+    4. Type "toil-rnaseq run ./jobStore" to execute the workflow.
 
-    Please read the README.md located in the source directory or at:
+    Please read the README and wiki before using:
     https://github.com/BD2KGenomics/toil-scripts/tree/master/src/toil_scripts/rnaseq_cgl
-
-    Structure of RNA-Seq Pipeline (per sample)
-
-                  8
-                  |
-                  3 -- 4 -- 5
-                 /          |
-      0 -- 1 -- 2 ---- 7 -- 9
-                |           |
-                6 -----------
-
-    0 = Download sample
-    1 = Unpack/Merge fastqs
-    2 = CutAdapt (adapter trimming)
-    3 = STAR Alignment
-    4 = RSEM Quantification
-    5 = RSEM Post-processing
-    6 = FastQC
-    7 = Kallisto
-    8 = BamQC (as specified by Treehouse at UC Santa Cruz)
-    9 = Consoliate output and upload to S3
-    =======================================
-    Dependencies
-    Curl:       apt-get install curl
-    Docker:     wget -qO- https://get.docker.com/ | sh
-    Toil:       pip install toil
-    Boto:       pip install boto (OPTIONAL, needed for upload to S3)
     """
     parser = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawTextHelpFormatter)
     subparsers = parser.add_subparsers(dest='command')
 
     # Input subparsers
     subparsers.add_parser('generate', help='Generates a config and manifest in the current working directory.')
-    subparsers.add_parser('config-input', help='Allows user to configure pipeline by following prompts.')
+    subparsers.add_parser('config-input', help='Allows user to configure workflow by following prompts.')
     subparsers.add_parser('manifest-input', help='Allows user to input samples to the manifest by following prompts.')
 
     # Run subparser
-    parser_run = subparsers.add_parser('run', help='Runs the RNA-seq pipeline')
+    parser_run = subparsers.add_parser('run', help='Runs the Toil RNA-seq workflow')
     group = parser_run.add_mutually_exclusive_group()
 
     # Run arguments
@@ -548,7 +520,7 @@ def main():
         for program in ['curl', 'docker']:
             require(next(which(program), None), program + ' must be installed on every node.'.format(program))
 
-        # Start the workflow, calling map_job() to run the pipeline for each sample
+        # Start the workflow, calling map_job() to run the workflow for each sample
         with Toil(args) as toil:
             if args.restart:
                 toil.restart()
