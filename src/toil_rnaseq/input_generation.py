@@ -193,8 +193,8 @@ def main():
     # Naming
     parser.add_argument('--star-name', type=str, default='starIndex', help='Name for STAR dir and tarball.')
     parser.add_argument('--rsem-name', type=str, default='rsemRef', help='Name for RSEM dir and tarball.')
-    parser.add_argument('--kallisto-name', type=str, default='kallisto', help='Name for kallisto index.')
-    parser.add_argument('--hera-name', type=str, default='hera-index', help='Name for hera index and directory.')
+    parser.add_argument('--kallisto-name', type=str, default='kallistoIndex', help='Name for kallisto index.')
+    parser.add_argument('--hera-name', type=str, default='heraIndex', help='Name for hera dir and tarball.')
 
     # If no arguments provided, print full help menu
     if len(sys.argv) == 1:
