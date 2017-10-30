@@ -14,19 +14,19 @@ kwargs = dict(
     package_dir={'': 'src'},
     packages=find_packages('src'),
     entry_points={
-        'console_scripts': ['toil-rnaseq = toil_rnaseq.rnaseq_cgl_pipeline:main']})
+        'console_scripts': ['toil-rnaseq = toil_rnaseq.rnaseq_cgl_pipeline:main',
+                            'toil-rnaseq-inputs = toil_rnaseq.input_generation:main']})
 
 
 setup(**kwargs)
 
 
 print("\n\n"
-      "Thank you for installing the UC Santa Cruz Computuational Genomics Lab RNA-seq pipeline! "
-      "If you want to run this Toil-based pipeline on a cluster in a cloud, please install Toil "
-      "with the appropriate extras. For example, To install AWS/EC2 support for example, run "
+      "Thank you for installing the UC Santa Cruz Computuational Genomics Lab RNA-seq pipeline\n"
+      "If you want to run this Toil-based pipeline on a cluster in a cloud, please install Toil\n "
+      "with the appropriate extras. For example, To install AWS/EC2 support for example, run"
       "\n\n"
       "pip install toil[aws,mesos]%s"
       "\n\n"
-      "on every EC2 instance. Refer to Toil's documentation at http://toil.readthedocs.io/en/latest/installation.html "
-      "for more information."
-      % required_versions['toil'])
+      "For more information, please refer to Toil's documentation:\n"
+      "http://toil.readthedocs.io/en/latest/installation.html")
