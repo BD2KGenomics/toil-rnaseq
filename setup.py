@@ -14,7 +14,7 @@ kwargs = dict(
     package_dir={'': 'src'},
     packages=find_packages('src'),
     entry_points={
-        'console_scripts': ['toil-rnaseq = toil_rnaseq.rnaseq_cgl_pipeline:main',
+        'console_scripts': ['toil-rnaseq = toil_rnaseq.toil_rnaseq:main',
                             'toil-rnaseq-inputs = toil_rnaseq.input_generation:main']})
 
 
