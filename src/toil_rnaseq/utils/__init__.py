@@ -1,47 +1,38 @@
 from __future__ import print_function
 
+import errno
 import os
 import textwrap
-from urlparse import urlparse
-
 from collections import OrderedDict, defaultdict
-
-from toil_lib import require
-from toil_lib.files import copy_files
-from toil_lib.urls import s3am_upload
+from urlparse import urlparse
 
 schemes = ('file', 'http', 's3', 'ftp', 'gdc')
 
 
-def parse_samples(path_to_manifest=None, sample_urls=None):
+def parse_samples(path_to_manifest=None):
     """
     Parses samples, specified in either a manifest or listed with --samples
 
     :param str path_to_manifest: Path to configuration file
-    :param list[str] sample_urls: Sample URLs
     :return: Samples and their attributes as defined in the manifest
     :rtype: list[list]
     """
     samples = []
-    if sample_urls:
-        for url in sample_urls:
-            samples.append(['tar', 'paired', os.path.basename(url.split('.')[0]), url])
-    elif path_to_manifest:
-        with open(path_to_manifest, 'r') as f:
-            for line in f.readlines():
-                if not line.isspace() and not line.startswith('#'):
-                    sample = line.strip().split('\t')
-                    require(len(sample) == 4, 'Bad manifest format! '
-                                              'Expected 4 tab separated columns, got: {}'.format(sample))
-                    file_type, paired, uuid, url = sample
-                    require(file_type == 'tar' or file_type == 'fq' or file_type == 'bam',
-                            '1st column must be "tar" or "fq": {}'.format(sample[0]))
-                    require(paired == 'paired' or paired == 'single',
-                            '2nd column must be "paired" or "single": {}'.format(sample[1]))
-                    if file_type == 'fq' and paired == 'paired':
-                        require(len(url.split(',')) == 2, 'Fastq pair requires two URLs separated'
-                                                          ' by a comma: {}'.format(url))
-                    samples.append(sample)
+    with open(path_to_manifest, 'r') as f:
+        for line in f.readlines():
+            if not line.isspace() and not line.startswith('#'):
+                sample = line.strip().split('\t')
+                require(len(sample) == 4, 'Bad manifest format! '
+                                          'Expected 4 tab separated columns, got: {}'.format(sample))
+                file_type, paired, uuid, url = sample
+                require(file_type == 'tar' or file_type == 'fq' or file_type == 'bam',
+                        '1st column must be "tar" or "fq": {}'.format(sample[0]))
+                require(paired == 'paired' or paired == 'single',
+                        '2nd column must be "paired" or "single": {}'.format(sample[1]))
+                if file_type == 'fq' and paired == 'paired':
+                    require(len(url.split(',')) == 2, 'Fastq pair requires two URLs separated'
+                                                      ' by a comma: {}'.format(url))
+                samples.append(sample)
     return samples
 
 
@@ -55,12 +46,12 @@ def generate_config():
         # Edit the values in this configuration file and then rerun the pipeline: "toil-rnaseq run"
         # Just Kallisto or STAR/RSEM can be run by supplying only the inputs to those tools
         #
-        # URLs can take the form: http://, ftp://, file://, s3://, gnos://
+        # URLs can take the form: http://, ftp://, file://, s3://, gdc://
         # Local inputs follow the URL convention: file:///full/path/to/input
         # S3 URLs follow the convention: s3://bucket/directory/file.txt
         #
         # Comments (beginning with #) do not need to be removed. Optional parameters left blank are treated as false.
-        
+
         ##############################################################################################################
         #                                           REQUIRED OPTIONS                                                 #
         ##############################################################################################################
@@ -68,14 +59,14 @@ def generate_config():
         # Required: Output location of sample. Can be full path to a directory or an s3:// URL
         # WARNING: S3 buckets must exist prior to upload, or it will fail.
         output-dir: 
-        
+
         ##############################################################################################################
-        #                           WORKFLOW OPTIONS (Alignment and Quantification)                                  #
+        #                            WORKFLOW INPUTS (Alignment and Quantification)                                  #
         ##############################################################################################################
-        
+
         # URL {scheme} to index tarball used by STAR
         star-index: s3://cgl-pipeline-inputs/rnaseq_cgl/starIndex_hg38_no_alt.tar.gz
-        
+
         # URL {scheme} to reference tarball used by RSEM
         # Running RSEM requires a star-index as a well as an rsem-ref
         rsem-ref: s3://cgl-pipeline-inputs/rnaseq_cgl/rsem_ref_hg38_no_alt.tar.gz
@@ -83,13 +74,19 @@ def generate_config():
         # URL {scheme} to kallisto index file. 
         kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
         
+        # URL {scheme} to hera index
+        hera-index: file:///data/hera-index.tar.gz
+        
+        # Maximum file size of input sample (for resource allocation during initial download)
+        max-sample-size: 20G
+
         ##############################################################################################################
         #                                   WORKFLOW OPTIONS (Quality Control)                                       #
         ##############################################################################################################
-        
+
         # If true, will preprocess samples with cutadapt using adapter sequences.
         cutadapt: true
-        
+
         # Adapter sequence to trim when running CutAdapt. Defaults set for Illumina
         fwd-3pr-adapter: AGATCGGAAGAG
 
@@ -101,7 +98,7 @@ def generate_config():
 
         # Optional: If true, will run BAM QC (as specified by California Kid's Cancer Comparison)
         bamqc: 
-        
+
         ##############################################################################################################
         #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)                       #
         ##############################################################################################################        
@@ -111,7 +108,7 @@ def generate_config():
 
         # Optional: Provide a full path to the token.txt used to download from the GDC
         gdc-token: 
-        
+
         ##############################################################################################################
         #                                   ADDITIONAL FILE OUTPUT OPTIONS                                           #
         ##############################################################################################################        
@@ -124,7 +121,7 @@ def generate_config():
         # You must also specify an ssec key if you want to upload to the s3-output-dir
         # as read data is assumed to be controlled access
         save-bam: 
-        
+
         ##############################################################################################################
         #                                           DEVELOPER OPTIONS                                                #
         ##############################################################################################################        
@@ -267,6 +264,41 @@ def user_input_manifest(manifest_path):
     return manifest_path
 
 
+def sanity_checks(config):
+    # Ensure there are inputs to run something
+    require(config.kallisto_index or config.star_index or config.hera_index,
+            'URLs not provided for Kallisto, STAR, or Hera, so there is nothing to do!')
+
+    # If running STAR or RSEM, ensure both inputs exist
+    if config.star_index or config.rsem_ref:
+        require(config.star_index and config.rsem_ref, 'Input provided for STAR or RSEM but not both. STAR: '
+                                                       '{}, RSEM: {}'.format(config.star_index, config.rsem_ref))
+
+    # Ensure file inputs have allowed URL schemes
+    for file_input in [x for x in [config.kallisto_index, config.star_index, config.rsem_ref, config.hera_index] if x]:
+        require(urlparse(file_input).scheme in schemes,
+                'Input {} in config must have the appropriate URL prefix: {}'.format(file_input, schemes))
+
+    # Output dir checks and handling
+    require(config.output_dir, 'No output location specified: {}'.format(config.output_dir))
+    if not config.output_dir.startswith('/'):
+        if urlparse(config.output_dir).scheme == 'file':
+            config.output_dir = config.output_dir.split('file://')[1]
+            if not config.output_dir.startswith('/'):
+                raise UserError('Output dir neither starts with / or is an S3 URL')
+        elif not urlparse(config.output_dir).scheme == 's3':
+            raise UserError('Output dir neither starts with / or is an S3 URL')
+
+    if not config.output_dir.endswith('/'):
+        config.output_dir += '/'
+
+    # Program checks
+    for program in ['curl', 'docker']:
+        require(next(which(program), None), program + ' must be installed on every node.'.format(program))
+
+    return config
+
+
 def generate_file(file_path, generate_func):
     """
     Checks file existance, generates file, and provides message
@@ -285,14 +317,6 @@ def generate_file(file_path, generate_func):
     return file_path
 
 
-def move_or_upload(config, files):
-    if urlparse(config.output_dir).scheme == 's3' and config.ssec:
-        for f in files:
-            s3am_upload(fpath=f, s3_dir=config.output_dir, s3_key_path=config.ssec)
-    elif urlparse(config.output_dir).scheme != 's3':
-        copy_files(file_paths=files, output_dir=config.output_dir)
-
-
 def docker_path(path):
     """
     Converts a path to a file to a "docker path" which replaces the dirname with '/data'
@@ -302,3 +326,96 @@ def docker_path(path):
     :rtype: str
     """
     return os.path.join('/data', os.path.basename(path))
+
+
+# General python functionss
+def flatten(x):
+    """
+    Flattens a nested array into a single list
+
+    :param list x: The nested list/tuple to be flattened.
+    """
+    result = []
+    for el in x:
+        if hasattr(el, "__iter__") and not isinstance(el, basestring):
+            result.extend(flatten(el))
+        else:
+            result.append(el)
+    return result
+
+
+def partitions(l, partition_size):
+    """
+    >>> list(partitions([], 10))
+    []
+    >>> list(partitions([1,2,3,4,5], 1))
+    [[1], [2], [3], [4], [5]]
+    >>> list(partitions([1,2,3,4,5], 2))
+    [[1, 2], [3, 4], [5]]
+    >>> list(partitions([1,2,3,4,5], 5))
+    [[1, 2, 3, 4, 5]]
+
+    :param list l: List to be partitioned
+    :param int partition_size: Size of partitions
+    """
+    for i in xrange(0, len(l), partition_size):
+        yield l[i:i + partition_size]
+
+
+# Pseudo-bash commands
+def mkdir_p(path):
+    """
+    The equivalent of mkdir -p
+    """
+    try:
+        os.makedirs(path)
+    except OSError as exc:
+        if exc.errno == errno.EEXIST and os.path.isdir(path):
+            pass
+        else:
+            raise
+
+
+def which(name, path=None):
+    """
+    Look for an executable file of the given name in the given list of directories,
+    or the directories listed in the PATH variable of the current environment. Roughly the
+    equivalent of the `which` program. Does not work on Windows.
+
+    :type name: str
+    :param name: the name of the program
+
+    :type path: Iterable
+    :param path: the directory paths to consider or None if the directories referenced in the
+    PATH environment variable should be used instead
+
+    :returns: an iterator yielding the full path to every occurrance of an executable file of the
+    given name in a directory on the given path or the PATH environment variable if no path was
+    passed
+
+    >>> next( which('ls') )
+    '/bin/ls'
+    >>> list( which('asdalskhvxjvkjhsdasdnbmfiewwewe') )
+    []
+    >>> list( which('ls', path=()) )
+    []
+    """
+    if path is None:
+        path = os.environ.get('PATH')
+        if path is None:
+            return
+        path = path.split(os.pathsep)
+    for bin_dir in path:
+        executable_path = os.path.join(bin_dir, name)
+        if os.access(executable_path, os.X_OK):
+            yield executable_path
+
+
+# Error handling
+class UserError(Exception):
+    pass
+
+
+def require(expression, message):
+    if not expression:
+        raise UserError('\n\n' + message + '\n\n')

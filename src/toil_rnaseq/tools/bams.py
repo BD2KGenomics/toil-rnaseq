@@ -3,48 +3,12 @@ from urlparse import urlparse
 
 from toil.lib.docker import dockerCheckOutput, dockerCall
 from toil_lib.files import copy_files
-from toil_lib.tools.preprocessing import run_cutadapt
-from toil_lib.urls import download_url
 
-from utils import docker_path
-
-
-def cleanup_ids(job, ids_to_delete):
-    """
-    Delete fileStoreIDs for files no longer needed
-
-    :param JobFunctionWrappingJob job: passed automatically by Toil
-    :param list ids_to_delete: list of FileStoreIDs to delete
-    """
-    [job.fileStore.deleteGlobalFile(x) for x in ids_to_delete if x is not None]
-
-
-def download_and_process_bam(job, config):
-    """
-    Download and process a BAM by converting it to a FASTQ pair
-
-    :param JobFunctionWrappingJob job: passed automatically by Toil
-    :param Namespace config: Argparse Namespace object containing argument inputs
-    :return: FileStoreIDs of R1 / R2 fastq files
-    """
-    work_dir = job.fileStore.getLocalTempDir()
-    parsed_url = urlparse(config.url)
-
-    # Download BAM
-    if parsed_url.scheme == 'gdc':
-        bam_path = download_bam_from_gdc(job, work_dir, url=config.url, token=config.gdc_token)
-    else:
-        bam_path = download_url(config.url, work_dir=work_dir, name='input.bam', s3_key_path=config.ssec)
-
-    # Convert to fastq pairs
-    r1, r2 = convert_bam_to_fastq(job, bam_path)
-
-    # Return fastq files
-    if config.cutadapt:
-        disk = 2 * (r1.size + r2.size)
-        return job.addChildJobFn(run_cutadapt, r1, r2, config.fwd_3pr_adapter,
-                                 config.rev_3pr_adapter, disk=disk).rv()
-    return r1, r2
+from toil_rnaseq.tools import gdc_version
+from toil_rnaseq.tools import picardtools_version
+from toil_rnaseq.tools import samtools_version
+from toil_rnaseq.utils import docker_path
+from toil_rnaseq.utils.urls import move_or_upload
 
 
 def assert_bam_is_paired_end(job, bam_path, region='chr6'):
@@ -70,8 +34,7 @@ def assert_bam_is_paired_end(job, bam_path, region='chr6'):
         parameters = ['view', '-c', '-f', '1',
                       docker_bam_path,
                       r]  # Chr6 chosen for testing, any region with reads will work
-        out = dockerCheckOutput(job, workDir=work_dir, parameters=parameters,
-                                tool='quay.io/ucsc_cgl/samtools:1.5--98b58ba05641ee98fa98414ed28b53ac3048bc09')
+        out = dockerCheckOutput(job, workDir=work_dir, parameters=parameters, tool=samtools_version)
         results.append(int(out.strip()))
     assert any(x for x in results if x != 0), 'BAM is not paired-end, aborting run.'
 
@@ -86,8 +49,7 @@ def index_bam(job, bam_path):
     """
     work_dir = os.path.dirname(os.path.abspath(bam_path))
     parameters = ['index', docker_path(bam_path)]
-    dockerCall(job, workDir=work_dir, parameters=parameters,
-               tool='quay.io/ucsc_cgl/samtools:1.5--98b58ba05641ee98fa98414ed28b53ac3048bc09')
+    dockerCall(job, workDir=work_dir, parameters=parameters, tool=samtools_version)
 
 
 def convert_bam_to_fastq(job, bam_path, check_paired=True, ignore_validation_errors=True):
@@ -97,6 +59,7 @@ def convert_bam_to_fastq(job, bam_path, check_paired=True, ignore_validation_err
     :param JobFunctionWrappingJob job: passed automatically by Toil
     :param str bam_path: Path to BAM
     :param bool check_paired: If True, checks whether BAM is paired-end
+    :param bool ignore_validation_errors: If True, ignores validation errors from picardTools
     :return: FileStoreIDs for R1 and R2
     :rtype: tuple
     """
@@ -107,8 +70,7 @@ def convert_bam_to_fastq(job, bam_path, check_paired=True, ignore_validation_err
     parameters = ['SamToFastq', 'I={}'.format(docker_path(bam_path)), 'F=/data/R1.fq', 'F2=/data/R2.fq']
     if ignore_validation_errors:
         parameters.append('VALIDATION_STRINGENCY=SILENT')
-    dockerCall(job=job, workDir=work_dir, parameters=parameters,
-               tool='quay.io/ucsc_cgl/picardtools:2.10.9--23fc31175415b14dbf337216f9ae14d3acc3d1eb')
+    dockerCall(job=job, workDir=work_dir, parameters=parameters, tool=picardtools_version)
     r1 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R1.fq'))
     r2 = job.fileStore.writeGlobalFile(os.path.join(work_dir, 'R2.fq'))
     return r1, r2
@@ -133,8 +95,36 @@ def download_bam_from_gdc(job, work_dir, url, token):
                   '-d', '/data',
                   '-t', '/data/{}'.format(os.path.basename(token)),
                   parsed_url.netloc]
-    dockerCall(job, tool='sbamin/gdc-client:1.2.0', parameters=parameters, workDir=work_dir)
+    dockerCall(job, tool=gdc_version, parameters=parameters, workDir=work_dir)
     files = [x for x in os.listdir(os.path.join(work_dir, parsed_url.netloc)) if x.lower().endswith('.bam')]
     assert len(files) == 1, 'More than one BAM found from GDC URL: {}'.format(files)
     bam_path = os.path.join(work_dir, parsed_url.netloc, files[0])
     return bam_path
+
+
+def sort_and_save_bam(job, config, bam_id, skip_sort=True):
+    """
+    Sorts STAR's output BAM using samtools
+
+    :param JobFunctionWrappingJob job: passed automatically by Toil
+    :param Namespace config: Argparse Namespace object containing argument inputs
+    :param bool skip_sort: If True, skips sort step and upload BAM
+    :param FileID bam_id: FileID for STARs genome aligned bam
+    """
+    job.fileStore.readGlobalFile(bam_id, os.path.join(job.tempDir, 'aligned.bam'))
+
+    parameters = ['sort',
+                  '-o', '/data/{}.sorted.bam'.format(config.uuid),
+                  '-O', 'bam',
+                  '-T', 'temp',
+                  '-@', str(job.cores),
+                  '/data/aligned.bam']
+
+    if skip_sort:
+        job.log('Skipping samtools sort as STAR already sorted')
+        bam_path = os.path.join(job.tempDir, 'aligned.bam')
+    else:
+        dockerCall(job, tool=samtools_version, parameters=parameters, workDir=job.tempDir)
+        bam_path = os.path.join(job.tempDir, '{}.sorted.bam'.format(config.uuid))
+
+    move_or_upload(config, files=[bam_path])
