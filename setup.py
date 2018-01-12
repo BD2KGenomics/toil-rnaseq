@@ -5,7 +5,7 @@ from setuptools import find_packages, setup
 kwargs = dict(
     name='toil-rnaseq',
     version=version,
-    description="UC Santa Cruz Computational Genomics Lab's Toil-based RNA-seq pipeline",
+    description="UC Santa Cruz Computational Genomics Lab's Toil-based RNA-seq workflow",
     author='UCSC Computational Genomics Lab',
     author_email='cgl-toil@googlegroups.com',
     url="https://github.com/BD2KGenomics/toil-lib",
@@ -22,11 +22,11 @@ setup(**kwargs)
 
 
 print("\n\n"
-      "Thank you for installing the UC Santa Cruz Computuational Genomics Lab RNA-seq pipeline\n"
-      "If you want to run this Toil-based pipeline on a cluster in a cloud, please install Toil\n "
+      "Thank you for installing the UC Santa Cruz Computuational Genomics Lab RNA-seq workflow\n"
+      "If you want to run this Toil-based workflow on a cluster in a cloud, please install Toil\n "
       "with the appropriate extras. For example, To install AWS/EC2 support for example, run"
       "\n\n"
       "pip install toil[aws,mesos]%s"
       "\n\n"
       "For more information, please refer to Toil's documentation:\n"
-      "http://toil.readthedocs.io/en/latest/installation.html")
+      "https://toil.readthedocs.io")

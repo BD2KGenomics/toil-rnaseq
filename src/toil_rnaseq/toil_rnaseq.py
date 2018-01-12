@@ -1,11 +1,13 @@
 #!/usr/bin/env python2.7
 from __future__ import print_function
 
+# Standard imports
 import argparse
 import multiprocessing
 import os
 import sys
 
+# Non-standard imports
 import yaml
 from toil.common import Toil
 from toil.job import Job, PromisedRequirement
@@ -13,6 +15,10 @@ from toil.job import Job, PromisedRequirement
 # Local imports
 from tools.aligners import run_star
 from tools.bams import sort_and_save_bam
+from tools.jobs import cleanup_ids
+from tools.jobs import consolidate_output
+from tools.jobs import map_job
+from tools.jobs import save_wiggle
 from tools.preprocessing import download_and_process_bam
 from tools.preprocessing import download_and_process_fastqs
 from tools.preprocessing import download_and_process_tar
@@ -21,24 +27,26 @@ from tools.quantifiers import run_hera
 from tools.quantifiers import run_kallisto
 from tools.quantifiers import run_rsem
 from tools.quantifiers import run_rsem_gene_mapping
-from utils import UserError
+from utils import UserError, rexpando
+from utils import configuration_sanity_checks
 from utils import generate_config
-from utils import generate_file
 from utils import generate_manifest
 from utils import parse_samples
 from utils import require
-from utils import sanity_checks
 from utils import user_input_config
 from utils import user_input_manifest
-from utils.expando import Expando
+from utils.files import generate_file
 from utils.filesize import human2bytes
-from utils.jobs import cleanup_ids
-from utils.jobs import consolidate_output
-from utils.jobs import map_job
-from utils.jobs import save_wiggle
 
 
-def root(job, sample, config):
+def workflow(job, sample, config):
+    """
+    Creates workflow graph for each sample based on configuration options
+
+    :param JobFunctionWrappingJob job: passed automatically by Toil
+    :param list(str, str, str, str) sample: Sample information - filetype, paired/unpaired, UUID, and URL
+    :param Expando config: Dict-like object containing workflow options as attributes
+    """
     # Create copy of config to store sample-specific information
     config = config.copy()
     config.file_type, config.paired, config.uuid, config.url = sample
@@ -53,10 +61,11 @@ def root(job, sample, config):
         inputs = job.wrapJobFn(download_and_process_bam, config, disk=disk)
 
     elif config.file_type == 'tar':
-        inputs = job.wrapJobFn(download_and_process_tar, config)
+        inputs = job.wrapJobFn(download_and_process_tar, config).encapsulate()
 
     else:
-        inputs = job.wrapJobFn(download_and_process_fastqs, config)
+        config.gz = True if config.url.split(',')[0].endswith('gz') else None  # Check if fastqs are gzipped
+        inputs = job.wrapJobFn(download_and_process_fastqs, config).encapsulate()
 
     # Add inputs as first child to root job
     job.addChild(inputs)
@@ -75,13 +84,15 @@ def root(job, sample, config):
 
     # Kallisto
     if config.kallisto_index:
-        kallisto = job.wrapJobFn(run_kallisto, r1_id=inputs.rv(0), r2_id=inputs.rv(1), cores=cores, disk=disk)
+        kallisto = job.wrapJobFn(run_kallisto, r1_id=inputs.rv(0), r2_id=inputs.rv(1),
+                                 kallisto_index_url=config.kallisto_index, cores=cores, disk=disk)
         inputs.addChild(kallisto)
         output['Kallisto'] = kallisto.rv()
 
     # Hera
     if config.hera_index:
-        hera = job.wrapJobFn(run_hera, r1_id=inputs.rv(0), r2_id=inputs.rv(1), cores=config.cores, disk=disk)
+        hera = job.wrapJobFn(run_hera, r1_id=inputs.rv(0), r2_id=inputs.rv(1),
+                             hera_index_url=config.hera_index, cores=config.cores, disk=disk)
         inputs.addChild(hera)
         output['Hera'] = hera.rv()
 
@@ -156,7 +167,7 @@ def main():
     args = cli()
 
     # Parse subparsers related to config and manifest
-    config_path = os.path.join(os.getcwd(), 'config-toil-rnaseeq.yaml')
+    config_path = os.path.join(os.getcwd(), 'config-toil-rnaseq.yaml')
     manifest_path = os.path.join(os.getcwd(), 'manifest-toil-rnaseq.tsv')
     if args.command == 'generate':
         generate_file(config_path, generate_config)
@@ -166,7 +177,7 @@ def main():
     elif args.command == 'manifest-input':
         user_input_manifest(manifest_path)
 
-    # Pipeline execution
+    # Workflow execution
     elif args.command == 'run':
 
         # Parse manifest
@@ -175,21 +186,27 @@ def main():
 
         # Parse config and store as Expando object for dot attribute accession
         require(os.path.exists(args.config), '{} not found. Run "toil-rnaseq generate"'.format(args.config))
-        config = Expando(yaml.load(open(args.config).read()))
+        config = rexpando(yaml.load(open(args.config).read()))
         config.maxCores = int(args.maxCores) if args.maxCores else sys.maxint  # Set maxCores from args
 
         # Sanity check configuration file
-        config = sanity_checks(config)
+        config = configuration_sanity_checks(config)
 
         # Start the workflow, calling map_job() to run the workflow for each sample
         with Toil(args) as toil:
             if args.restart:
                 toil.restart()
             else:
-                toil.start(Job.wrapJobFn(map_job, root, samples, config))
+                toil.start(Job.wrapJobFn(map_job, workflow, samples, config))
 
 
 def cli():
+    """
+    Command line interface for the toil-rnaseq workflow
+
+    :returns: Command line arguments
+    :rtype: Namespace
+    """
     parser = argparse.ArgumentParser(description=main.__doc__, formatter_class=argparse.RawTextHelpFormatter)
     subparsers = parser.add_subparsers(dest='command')
 

@@ -3,8 +3,8 @@ import shutil
 import subprocess
 from urlparse import urlparse
 
+from files import copy_files
 from toil_rnaseq.utils import require
-from toil_rnaseq.utils.files import copy_files
 
 
 def download_url(url, work_dir='.', name=None, s3_key_path=None):
@@ -55,13 +55,6 @@ def s3am_upload(fpath, s3_dir, num_cores=1, s3_key_path=None):
     _s3am_with_retry(num_cores, file_path=fpath, s3_url=s3_dir, mode='upload', s3_key_path=s3_key_path)
 
 
-def s3am_upload_job(job, file_id, file_name, s3_dir, s3_key_path=None):
-    """Job version of s3am_upload"""
-    work_dir = job.fileStore.getLocalTempDir()
-    fpath = job.fileStore.readGlobalFile(file_id, os.path.join(work_dir, file_name))
-    s3am_upload(fpath=fpath, s3_dir=s3_dir, num_cores=job.cores, s3_key_path=s3_key_path)
-
-
 def _s3am_with_retry(num_cores, file_path, s3_url, mode='upload', s3_key_path=None):
     """
     Run s3am with 3 retries
@@ -98,6 +91,13 @@ def _s3am_with_retry(num_cores, file_path, s3_url, mode='upload', s3_key_path=No
 
 
 def move_or_upload(config, files, enforce_ssec=True):
+    """
+    Move or upload file based on configuration settings
+
+    :param Expando config: Dict-like object containing workflow options as attributes
+    :param list(str,) files: List of files to be moved or uploaded
+    :param bool enforce_ssec: If True, enforces SSEC be set in config or else fails
+    """
     if urlparse(config.output_dir).scheme == 's3':
         if enforce_ssec:
             require(config.ssec, 'SSEC encryption required to upload sensitive read data to S3.')

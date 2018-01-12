@@ -1,13 +1,14 @@
 import os
 from urlparse import urlparse
 
-from toil.lib.docker import dockerCheckOutput, dockerCall
-from toil_lib.files import copy_files
+from toil.lib.docker import dockerCall
+from toil.lib.docker import dockerCheckOutput
 
 from toil_rnaseq.tools import gdc_version
 from toil_rnaseq.tools import picardtools_version
 from toil_rnaseq.tools import samtools_version
 from toil_rnaseq.utils import docker_path
+from toil_rnaseq.utils.files import copy_files
 from toil_rnaseq.utils.urls import move_or_upload
 
 
@@ -111,7 +112,9 @@ def sort_and_save_bam(job, config, bam_id, skip_sort=True):
     :param bool skip_sort: If True, skips sort step and upload BAM
     :param FileID bam_id: FileID for STARs genome aligned bam
     """
-    job.fileStore.readGlobalFile(bam_id, os.path.join(job.tempDir, 'aligned.bam'))
+    bam_path = os.path.join(job.tempDir, 'aligned.bam')
+    sorted_bam = os.path.join(job.tempDir, '{}.sorted.bam'.format(config.uuid))
+    job.fileStore.readGlobalFile(bam_id, bam_path)
 
     parameters = ['sort',
                   '-o', '/data/{}.sorted.bam'.format(config.uuid),
@@ -121,10 +124,9 @@ def sort_and_save_bam(job, config, bam_id, skip_sort=True):
                   '/data/aligned.bam']
 
     if skip_sort:
-        job.log('Skipping samtools sort as STAR already sorted')
-        bam_path = os.path.join(job.tempDir, 'aligned.bam')
+        job.log('Skipping samtools sort as STAR already sorted BAM')
+        os.rename(bam_path, sorted_bam)
     else:
         dockerCall(job, tool=samtools_version, parameters=parameters, workDir=job.tempDir)
-        bam_path = os.path.join(job.tempDir, '{}.sorted.bam'.format(config.uuid))
 
-    move_or_upload(config, files=[bam_path])
+    move_or_upload(config, files=[sorted_bam])

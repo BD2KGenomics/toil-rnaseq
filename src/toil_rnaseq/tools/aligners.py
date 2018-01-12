@@ -70,8 +70,7 @@ def run_star(job, r1_id, r2_id, star_index_url, wiggle=False, sort=False, save_a
         parameters.extend(['--readFilesIn', '/data/R1.fastq'])
 
     # Call: STAR
-    dockerCall(job=job, tool=star_version,
-               workDir=job.tempDir, parameters=parameters)
+    dockerCall(job=job, tool=star_version, workDir=job.tempDir, parameters=parameters)
 
     # Check output bam isnt size zero if sorted
     aligned_bam_path = os.path.join(job.tempDir, aligned_bam)

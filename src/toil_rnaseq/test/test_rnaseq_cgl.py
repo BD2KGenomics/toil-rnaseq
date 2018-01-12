@@ -50,10 +50,6 @@ class RNASeqCGLTest(TestCase):
                                    toilOptions,
                                    jobStore)
 
-    def test_samples_option(self):
-        self._run(self.base_command, '--samples', self.sample.geturl())
-        self._assertOutput()
-
     def test_manifest(self):
         num_samples = int(os.environ.get('TOIL_SCRIPTS_TEST_NUM_SAMPLES', '1'))
         self._run(self.base_command, '--manifest', self._generate_manifest(num_samples=num_samples))
@@ -75,7 +71,6 @@ class RNASeqCGLTest(TestCase):
             for i in range(1 if num_samples is None else num_samples):
                 value = None if num_samples is None else i
                 output_file = self._sample_name(value, bam=bam) + '.tar.gz'
-                output_file = 'FAIL.' + output_file  # This flag is added by bamQC
                 key = bucket.get_key(posixpath.join(prefix, output_file), validate=True)
                 # FIXME: We may want to validate the output a bit more
                 self.assertTrue(key.size > 0)
@@ -96,7 +91,9 @@ class RNASeqCGLTest(TestCase):
                     star-index: {input_dir}/starIndex_chr6.tar.gz
                     kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
                     rsem-ref: {input_dir}/rsem_ref_chr6.tar.gz
+                    hera-index: s3://cgl-pipeline-inputs/rnaseq_cgl/hera-index.tar.gz
                     output-dir: {output_dir}
+                    max-sample-size: 2G
                     fastqc: true
                     cutadapt:
                     ssec:
@@ -106,7 +103,6 @@ class RNASeqCGLTest(TestCase):
                     fwd-3pr-adapter: AGATCGGAAGAG
                     rev-3pr-adapter: AGATCGGAAGAG
                     ci-test: true
-                    bamqc: true
                     """[1:]).format(output_dir=self.output_dir.geturl(),
                                     input_dir=self.input_dir.geturl()))
         return path

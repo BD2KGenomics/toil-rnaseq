@@ -6,32 +6,45 @@ import textwrap
 from collections import OrderedDict, defaultdict
 from urlparse import urlparse
 
+from toil_rnaseq.utils.expando import Expando
+
 schemes = ('file', 'http', 's3', 'ftp', 'gdc')
+_iter_types = (list, tuple, set, frozenset)
 
 
 def parse_samples(path_to_manifest=None):
     """
-    Parses samples, specified in either a manifest or listed with --samples
+    Parses samples from manifest
 
-    :param str path_to_manifest: Path to configuration file
+    :param str path_to_manifest: Path to manifest file containing sample information
     :return: Samples and their attributes as defined in the manifest
-    :rtype: list[list]
+    :rtype: list(list(str, str, str, str))
     """
     samples = []
     with open(path_to_manifest, 'r') as f:
         for line in f.readlines():
             if not line.isspace() and not line.startswith('#'):
                 sample = line.strip().split('\t')
+
+                # Enforce number of columns
                 require(len(sample) == 4, 'Bad manifest format! '
                                           'Expected 4 tab separated columns, got: {}'.format(sample))
+
+                # Unpack sample information
                 file_type, paired, uuid, url = sample
-                require(file_type == 'tar' or file_type == 'fq' or file_type == 'bam',
-                        '1st column must be "tar" or "fq": {}'.format(sample[0]))
-                require(paired == 'paired' or paired == 'single',
-                        '2nd column must be "paired" or "single": {}'.format(sample[1]))
+
+                # Check file_type
+                file_types = ['tar', 'fq', 'bam']
+                require(file_type in file_types, '1st column is not valid {}. User: {}'.format(file_types, file_type))
+
+                # Check paired/unpaired
+                pair_types = ['paired', 'single']
+                require(paired in pair_types, '2nd column is not valid {}. User: {}'.format(pair_types, paired))
+
+                # If paired fastq data, ensure correct number of URLs
                 if file_type == 'fq' and paired == 'paired':
-                    require(len(url.split(',')) == 2, 'Fastq pair requires two URLs separated'
-                                                      ' by a comma: {}'.format(url))
+                    require(len(url.split(',')) % 2 == 0, 'Paired fastqs require an even number of URLs separated'
+                                                          ' by a comma: {}'.format(url))
                 samples.append(sample)
     return samples
 
@@ -39,7 +52,7 @@ def parse_samples(path_to_manifest=None):
 def generate_config():
     return textwrap.dedent("""
         ##############################################################################################################
-        #                               TOIL RNA-SEQ PIPELINE CONFIGURATION FILE                                     #
+        #                               TOIL RNA-SEQ WORKFLOW CONFIGURATION FILE                                     #
         ##############################################################################################################
 
         # This configuration file is formatted in YAML. Simply write the value (at least one space) after the colon.
@@ -75,7 +88,7 @@ def generate_config():
         kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
         
         # URL {scheme} to hera index
-        hera-index: file:///data/hera-index.tar.gz
+        hera-index: s3://cgl-pipeline-inputs/rnaseq_cgl/hera-index.tar.gz
         
         # Maximum file size of input sample (for resource allocation during initial download)
         max-sample-size: 20G
@@ -94,10 +107,7 @@ def generate_config():
         rev-3pr-adapter: AGATCGGAAGAG
 
         # If true, will run FastQC and include QC in sample output
-        fastqc: true
-
-        # Optional: If true, will run BAM QC (as specified by California Kid's Cancer Comparison)
-        bamqc: 
+        fastqc: true 
 
         ##############################################################################################################
         #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)                       #
@@ -114,7 +124,7 @@ def generate_config():
         ##############################################################################################################        
 
         # Optional: If true, saves the wiggle file (.bg extension) output by STAR
-        # WARNING: Requires STAR sorting, which has memory leak issues that can crash the pipeline. 
+        # WARNING: Requires STAR sorting, which has memory leak issues that can crash the workflow. 
         wiggle: 
 
         # Optional: If true, saves the aligned BAM (by coordinate) produced by STAR
@@ -133,7 +143,7 @@ def generate_config():
 
 def user_input_config(config_path):
     """
-    User input of pipeline configuration file
+    User input of workflow configuration file
 
     :param str config_path: Path to configuration file
     :return: Configuration file path or None if user skips
@@ -190,6 +200,9 @@ def user_input_config(config_path):
 
 def generate_manifest():
     return textwrap.dedent("""
+        ##############################################################################################################
+        #                                    TOIL RNA-SEQ WORKFLOW MANIFEST FILE                                     #
+        ##############################################################################################################
         #   Edit this manifest to include information pertaining to each sample to be run.
         #   There are 4 tab-separated columns: filetype, paired/unpaired, UUID, URL(s) to sample
         #
@@ -224,7 +237,7 @@ def generate_manifest():
 
 def user_input_manifest(manifest_path):
     """
-    User input of pipeline manifest file
+    User input of workflow manifest file
 
     :param str manifest_path: Path to write out manifest
     :return: Path to manifest or None if user skips
@@ -264,7 +277,14 @@ def user_input_manifest(manifest_path):
     return manifest_path
 
 
-def sanity_checks(config):
+def configuration_sanity_checks(config):
+    """
+    Sanity check configuration file
+
+    :param Expando config: Dict-like object containing workflow options as attributes
+    :return: `config` with appropriate changes to output_dir
+    :rtype: Expando
+    """
     # Ensure there are inputs to run something
     require(config.kallisto_index or config.star_index or config.hera_index,
             'URLs not provided for Kallisto, STAR, or Hera, so there is nothing to do!')
@@ -299,24 +319,6 @@ def sanity_checks(config):
     return config
 
 
-def generate_file(file_path, generate_func):
-    """
-    Checks file existance, generates file, and provides message
-
-    :param str file_path: File location to generate file
-    :param func generate_func: Function used to generate file
-    :return: Path to file
-    :rtype: str
-    """
-    if os.path.exists(file_path):
-        print('File "{}" already exists! Doing nothing.'.format(file_path))
-    else:
-        with open(file_path, 'w') as f:
-            f.write(generate_func())
-        print('\t{} has been generated in the current working directory.'.format(os.path.basename(file_path)))
-    return file_path
-
-
 def docker_path(path):
     """
     Converts a path to a file to a "docker path" which replaces the dirname with '/data'
@@ -326,6 +328,62 @@ def docker_path(path):
     :rtype: str
     """
     return os.path.join('/data', os.path.basename(path))
+
+
+def rexpando(d):
+    """
+    Recursive Expando!
+
+    Recursively iterate through a nested dict / list object
+    to convert all dictionaries to Expando objects
+
+    :param dict d: Dictionary to convert to nested Expando objects
+    :return: Converted dictionary
+    :rtype: Expando
+    """
+    e = Expando()
+    for k, v in d.iteritems():
+        k = _key_to_attribute(k)
+        if isinstance(v, dict):
+            e[k] = rexpando(v)
+        elif isinstance(v, _iter_types):
+            e[k] = _rexpando_iter_helper(v)
+        else:
+            e[k] = v
+    return e
+
+
+def _rexpando_iter_helper(input_iter):
+    """
+    Recursively handle iterables for rexpando
+
+    :param iter input_iter: Iterable to process
+    :return: Processed iterable
+    :rtype: list
+    """
+    l = []
+    for v in input_iter:
+        if isinstance(v, dict):
+            l.append(rexpando(v))
+        elif isinstance(v, _iter_types):
+            l.append(_rexpando_iter_helper(v))
+        else:
+            l.append(v)
+    return l
+
+
+def _key_to_attribute(key):
+    """
+    Processes key for attribute accession by replacing illegal chars with a single '_'
+
+    :param str key: Dictionary key to process
+    :return: Processed key
+    :rtype: str
+    """
+    illegal_chars = ['!', '@', '#', '$', '%', '^', '&', '*', '(', ')', '-', '.', ',', '+', '/', '\\', ':', ';']
+    for c in illegal_chars:
+        key = key.replace(c, '_')
+    return '_'.join(x for x in key.split('_') if x)  # Remove superfluous '_' chars
 
 
 # General python functionss
