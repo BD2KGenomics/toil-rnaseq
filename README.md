@@ -14,7 +14,7 @@ contact [John Vivian](jtvivian@gmail.com).
 ### Appendix
 
 - [Dependencies and Installation](#dependencies-and-installation)
-- [Quickstart](#general-usage)
+- [Quickstart](#quickstart)
 
 For detailed information and troubleshooting, see the [Wiki](https://github.com/BD2KGenomics/toil-rnaseq/wiki)
 - [Workflow Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Workflow-Inputs)
