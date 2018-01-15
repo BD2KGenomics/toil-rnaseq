@@ -37,11 +37,6 @@ This workflow takes RNA sequencing reads (fastq / BAM) as input and outputs the 
 │   ├── fusion.txt
 │   └── run_info.json
 ├── QC
-│   ├── bamQC
-│   │   ├── readDist.txt
-│   │   ├── readDist.txt_PASS_qc.txt
-│   │   ├── rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf
-│   │   └── rnaAligned.out.md.sorted.geneBodyCoverage.txt
 │   ├── fastQC
 │   │   ├── R1_fastqc.html
 │   │   ├── R1_fastqc.zip
