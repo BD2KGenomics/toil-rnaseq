@@ -57,9 +57,9 @@ This workflow takes RNA sequencing reads (fastq / BAM) as input and outputs the 
     ├── rsem_genes.results
     └── rsem_isoforms.results
 ```
-If the user selects options such as `save-star-bam`, or `wiggle`, additional files will appear in the output directory:
+If the user selects options such as `save-bam`, or `wiggle`, additional files will appear in the output directory:
 
-- SAMPLE.sorted.bam OR SAMPLE.sortedByCoord.md.bam if `bamQC` step is enabled.
+- SAMPLE.sorted.bam
 - SAMPLE.wiggle.bg
 
 The output tarball is prepended with the unique name for the sample (e.g. SAMPLE.tar.gz). 
