@@ -8,8 +8,9 @@ from multiprocessing import cpu_count
 
 from toil.job import Job
 from toil.lib.docker import dockerCall
-from toil_lib.files import move_files
-from toil_lib.urls import download_url
+
+from utils.files import move_files
+from utils.urls import download_url
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
@@ -150,7 +151,7 @@ def hera_index(job, args):
 
 def main():
     """
-    Generate inputs / indices for tools used in the toil-rnaseq pipeline
+    Generate inputs / indices for tools used in the toil-rnaseq workflow
 
     Create inputs for:
         - STAR
@@ -182,7 +183,7 @@ def main():
     # Toil wrapper options
     parser.add_argument('--max-cores', type=int, default=12, help='Maximum number of cores to use')
     parser.add_argument('--work-dir', type=str, default='.', help='Directory to put temporary files')
-    parser.add_argument('--resume', action='store_true', default=False, help='Restarts pipeline')
+    parser.add_argument('--resume', action='store_true', default=False, help='Restarts workflow')
 
     # Flags
     parser.add_argument('--star', action='store_true', default=None, help='Create input for STAR')
