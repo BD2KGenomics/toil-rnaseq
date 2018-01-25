@@ -78,17 +78,17 @@ def generate_config():
         ##############################################################################################################
 
         # URL {scheme} to index tarball used by STAR
-        star-index: s3://cgl-pipeline-inputs/rnaseq_cgl/starIndex_hg38_no_alt.tar.gz
+        star-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/starIndex_hg38_no_alt.tar.gz
 
         # URL {scheme} to reference tarball used by RSEM
         # Running RSEM requires a star-index as a well as an rsem-ref
-        rsem-ref: s3://cgl-pipeline-inputs/rnaseq_cgl/rsem_ref_hg38_no_alt.tar.gz
+        rsem-ref: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/rsem_ref_hg38_no_alt.tar.gz
 
         # URL {scheme} to kallisto index file. 
-        kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
+        kallisto-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/kallisto_hg38.idx
         
         # URL {scheme} to hera index
-        hera-index: s3://cgl-pipeline-inputs/rnaseq_cgl/hera-index.tar.gz
+        hera-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/hera-index.tar.gz
         
         # Maximum file size of input sample (for resource allocation during initial download)
         max-sample-size: 20G
