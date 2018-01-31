@@ -85,7 +85,7 @@ def download_and_process_fastqs(job, config):
     """
     # Define download and process jobs
     disk = '2G' if config.ci_test else config.max_sample_size
-    download = job.wrapJobFn(multiple_fastq_dowloading, config, sample_disk=disk)
+    download = job.wrapJobFn(multiple_fastq_dowloading, config, sample_disk=disk).encapsulate()
     process = job.wrapJobFn(process_sample, config, fastq_ids=download.rv(),
                             disk=PromisedRequirement(lambda xs: sum(x.size for x in xs) * 3, download.rv()))
 

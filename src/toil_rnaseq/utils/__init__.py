@@ -28,23 +28,23 @@ def parse_samples(path_to_manifest=None):
 
                 # Enforce number of columns
                 require(len(sample) == 4, 'Bad manifest format! '
-                                          'Expected 4 tab separated columns, got: {}'.format(sample))
+                                          'Expected 4 tab separated columns, User: "{}"'.format(sample))
 
                 # Unpack sample information
                 file_type, paired, uuid, url = sample
 
                 # Check file_type
                 file_types = ['tar', 'fq', 'bam']
-                require(file_type in file_types, '1st column is not valid {}. User: {}'.format(file_types, file_type))
+                require(file_type in file_types, '1st column is not valid {}. User: "{}"'.format(file_types, file_type))
 
                 # Check paired/unpaired
                 pair_types = ['paired', 'single']
-                require(paired in pair_types, '2nd column is not valid {}. User: {}'.format(pair_types, paired))
+                require(paired in pair_types, '2nd column is not valid {}. User: "{}"'.format(pair_types, paired))
 
                 # If paired fastq data, ensure correct number of URLs
                 if file_type == 'fq' and paired == 'paired':
                     require(len(url.split(',')) % 2 == 0, 'Paired fastqs require an even number of URLs separated'
-                                                          ' by a comma: {}'.format(url))
+                                                          ' by a comma: User: "{}"'.format(url))
                 samples.append(sample)
     return samples
 
@@ -292,12 +292,12 @@ def configuration_sanity_checks(config):
     # If running STAR or RSEM, ensure both inputs exist
     if config.star_index or config.rsem_ref:
         require(config.star_index and config.rsem_ref, 'Input provided for STAR or RSEM but not both. STAR: '
-                                                       '{}, RSEM: {}'.format(config.star_index, config.rsem_ref))
+                                                       '"{}", RSEM: "{}"'.format(config.star_index, config.rsem_ref))
 
     # Ensure file inputs have allowed URL schemes
     for file_input in [x for x in [config.kallisto_index, config.star_index, config.rsem_ref, config.hera_index] if x]:
         require(urlparse(file_input).scheme in schemes,
-                'Input {} in config must have the appropriate URL prefix: {}'.format(file_input, schemes))
+                'Input "{}" in config must have the appropriate URL prefix: {}'.format(file_input, schemes))
 
     # Output dir checks and handling
     require(config.output_dir, 'No output location specified: {}'.format(config.output_dir))
