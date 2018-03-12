@@ -14,7 +14,7 @@ contact [John Vivian](jtvivian@gmail.com).
 ### Appendix
 
 - [Dependencies and Installation](#dependencies-and-installation)
-- [Quickstart](#general-usage)
+- [Quickstart](#quickstart)
 
 For detailed information and troubleshooting, see the [Wiki](https://github.com/BD2KGenomics/toil-rnaseq/wiki)
 - [Workflow Inputs](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Workflow-Inputs)
@@ -37,11 +37,6 @@ This workflow takes RNA sequencing reads (fastq / BAM) as input and outputs the 
 │   ├── fusion.txt
 │   └── run_info.json
 ├── QC
-│   ├── bamQC
-│   │   ├── readDist.txt
-│   │   ├── readDist.txt_PASS_qc.txt
-│   │   ├── rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf
-│   │   └── rnaAligned.out.md.sorted.geneBodyCoverage.txt
 │   ├── fastQC
 │   │   ├── R1_fastqc.html
 │   │   ├── R1_fastqc.zip
@@ -62,9 +57,9 @@ This workflow takes RNA sequencing reads (fastq / BAM) as input and outputs the 
     ├── rsem_genes.results
     └── rsem_isoforms.results
 ```
-If the user selects options such as `save-star-bam`, or `wiggle`, additional files will appear in the output directory:
+If the user selects options such as `save-bam`, or `wiggle`, additional files will appear in the output directory:
 
-- SAMPLE.sorted.bam OR SAMPLE.sortedByCoord.md.bam if `bamQC` step is enabled.
+- SAMPLE.sorted.bam
 - SAMPLE.wiggle.bg
 
 The output tarball is prepended with the unique name for the sample (e.g. SAMPLE.tar.gz). 
