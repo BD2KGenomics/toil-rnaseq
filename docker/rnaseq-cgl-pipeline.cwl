@@ -181,7 +181,7 @@ outputs:
       items: File
     outputBinding:
       glob: '*.bam'
-      doc: "BAM result files RNA-seq CGL pipeline"
+    doc: "BAM result files RNA-seq CGL pipeline"
 
 baseCommand: ["--logDebug"]
 
