@@ -53,6 +53,127 @@ hints:
     description: "The process requires at least 16G of RAM and we recommend 500GB or storage."
 
 inputs:
+  auto-scale:
+    type: boolean?
+    default: false
+    doc: "If this flag is true, the pipeline will use auto-scaling and will be the leader."
+    inputBinding:
+      prefix: --auto-scale
+
+  cluster-name:
+    type: string?
+    doc: "Name of the Toil cluster. Usually the security group name"
+    inputBinding:
+      prefix: --cluster-name
+
+  output-location:
+    type: string?
+    doc: "Directory in cloud where  output files will be put; e.g. s3://toil-rnaseq-cloud-output-bucket."
+    inputBinding:
+      prefix: --output-location
+
+  provisioner:
+    type: string?
+    doc: "Cloud provisioner to use. E.g aws"
+    inputBinding:
+      prefix: --provisioner
+
+  job-store:
+    type: string?
+    doc: "Directory in cloud where working files will be put; e.g. aws:us-west-2:autoscaling-toil-rnaseq-jobstore"
+    inputBinding:
+      prefix: --job-store
+
+  max-nodes:
+    type: int?
+    doc: "Maximum worker nodes to launch in auto scaling. E.g. 2"
+    inputBinding:
+      prefix: --max-nodes
+
+  node-type:
+    type: string?
+    doc: "Cloud worker VM type; e.g. c3.8xlarge"
+    inputBinding:
+      prefix: --node-type
+
+  credentials-id:
+    type: string?
+    doc: "Credentials id"
+    inputBinding:
+      prefix: --credentials-id
+
+  credentials-secret-key:
+    type: string?
+    doc: "Credentials secret key"
+    inputBinding:
+      prefix: --credentials-secret-key
+
+
+  #This input format is needed for Dockstore when autoscaling so Dockstore does not download the input files
+  #Instead they will be downloaded by the Toil pipeline from a commmon location
+  sample-tar-paths:
+    doc: "Absolute path to sample tarball"
+    type:
+    - "null"  #means that sample-tar-paths is optional, but if present must be an array of strings
+    - type: array
+      items: string
+      inputBinding:
+        prefix: --sample-tar
+
+  #This input format is needed for Dockstore when autoscaling so Dockstore does not download the input files
+  #Instead they will be downloaded by the Toil pipeline from a commmon location
+  sample-single-paths:
+    doc: "Absolute path(s) to unpaired FASTQ files. FASTQ files are comma delimited. Ex: sample1,sample2,sample3,sample4"
+    type:
+    - "null"  #means that sample-single-paths is optional, but if present must be an array of strings
+    - type: array
+      items: string
+      inputBinding:
+        prefix: --sample-single
+
+  #This input format is needed for Dockstore when autoscaling so Dockstore does not download the input files
+  #Instead they will be downloaded by the Toil pipeline from a commmon location
+  sample-paired-paths:
+    doc: "Absolute path(s) to paired FASTQ files. FASTQ pairs are comma delimited and each pair is in the order R1,R2,R1,R2.... Ex: sample1,sample2,sample3,sample4"
+    type:
+    - "null"  #means that sample-paired-paths is optional, but if present must be an array of strings
+    - type: array
+      items: string
+    inputBinding:
+      prefix: --sample-paired
+
+  output-basenames:
+    doc: "Array of Unique names to use for naming the output files"
+    type:
+    - type: array
+      items: string
+    inputBinding:
+      prefix: --output-basenames
+
+  star-path:
+    type: string?
+    doc: "Absolute path to STAR index tarball."
+    inputBinding:
+      prefix: --star
+
+  rsem-path:
+    type: string?
+    doc: "Absolute path to rsem reference tarball."
+    inputBinding:
+      prefix: --rsem
+
+  kallisto-path:
+    type: string?
+    doc: "Absolute path to kallisto index (.idx) file."
+    inputBinding:
+      prefix: --kallisto
+
+  hera-path:
+    type: string?
+    doc: "Absolute path to Hera index (.idx) file."
+    inputBinding:
+      prefix: --hera
+
   sample-tar:
     doc: "Absolute path to sample tarball"
     type: File[]?
@@ -74,22 +195,28 @@ inputs:
       itemSeparator: "," 
  
   star:
-    type: File
+    type: File?
     doc: "Absolute path to STAR index tarball."
     inputBinding:
       prefix: --star
 
   rsem:
-    type: File
+    type: File?
     doc: "Absolute path to rsem reference tarball."
     inputBinding:
       prefix: --rsem
 
   kallisto:
-    type: File
+    type: File?
     doc: "Absolute path to kallisto index (.idx) file."
     inputBinding:
       prefix: --kallisto
+
+  hera:
+    type: File?
+    doc: "Absolute path to Hera index (.idx) file."
+    inputBinding:
+      prefix: --hera
 
   disable-cutadapt:
     type: boolean?
@@ -138,17 +265,23 @@ inputs:
     inputBinding:
       prefix: --resume
 
+  max-sample-size:
+    type: string?
+    doc: "Maximum size of sample file using Toil resource requirements syntax, e.g '20G'. Standard suffixes like K, Ki, M, Mi, G or Gi are supported."
+    inputBinding:
+      prefix: --max-sample-size
+
   cores:
     type: int?
     doc: "Will set a cap on number of cores to use, default is all available cores."
     inputBinding:
       prefix: --cores
 
-  output-basename:
-    type: string?
-    doc: "Basename to use for naming the output files"
-    inputBinding:
-      prefix: --output-basename
+#  credentials-file:
+#    type: File?
+#    doc: "<path/file_name> with access credentials. E.g /root/.aws/credentials"
+#    inputBinding:
+#      prefix: --credentials-file
 
 outputs:
   output_files:
@@ -162,10 +295,6 @@ outputs:
   wiggle_files:
     type:
       type: array
-#is this needed if there are no wiggle file
-#outputs, i.e. save-wiggle is false?
-#similar to sample-tar above? 
-#      items: ["null", File]
       items: File
     outputBinding:
       glob: '*.wiggle.bg'
@@ -174,10 +303,6 @@ outputs:
   bam_files:
     type:
       type: array
-#is this needed if there are no BAM file
-#outputs, i.e. save-bam is false?
-#similar to sample-tar above? 
-#      items: ["null", File]
       items: File
     outputBinding:
       glob: '*.bam'

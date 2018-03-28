@@ -12,37 +12,106 @@ from uuid import uuid4
 import gzip
 from bd2k.util.exceptions import require
 from toil.lib.bioio import addLoggingOptions, setLoggingFromOptions
+import time
+import virtualenv
+import re
+from itertools import chain
+
+from shutil import copyfile
+
+import socket
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger()
 
-
 def call_pipeline(mount, args):
-    work_dir = os.path.join(mount, 'Toil-RNAseq-' + str(uuid4()))
+
+    # Activate the virtual environment where the toil rnaseq pipeline is installed
+    activate_this = '/opt/rnaseq-pipeline/toil_venv/bin/activate_this.py'
+    execfile(activate_this, dict(__file__=activate_this))
+
+    if args.auto_scale:
+        # Run the meoso-master process
+        # Run it in the background by using Popen instead of check_call 
+        # https://stackoverflow.com/questions/32577071/execute-subprocess-in-background
+        command = ['mesos-master', '--log_dir=/var/lib/mesos', '--registry=in_memory', '--cluster=' + args.cluster_name]
+        try:
+            log.info('Executing mesos command: ' + str(command))
+            p = subprocess.Popen(command)
+        except OSError as e:
+            print(e.message, file=sys.stderr)
+            exit(e.returncode)
+        else:
+            log.info('mesos-master process running in background')
+
+
+    unique_toil_dir = 'Toil-RNAseq-' + str(uuid4())
+    work_dir = os.path.join(mount, unique_toil_dir)
+
     os.makedirs(work_dir)
     log.info('Temporary directory created: {}'.format(work_dir))
     config_path = os.path.join(work_dir, 'toil-rnaseq.config')
-    job_store = os.path.join(args.resume, 'jobStore') if args.resume else os.path.join(work_dir, 'jobStore')
+
+    output_dir = mount
+    if args.auto_scale:
+        #set job store to be clould URL, e.g. S3 bucket
+        job_store = os.path.join(args.resume, 'jobStore') if args.resume else args.job_store
+        output_dir = args.output_location
+    else:
+        job_store = os.path.join(args.resume, 'jobStore') if args.resume else os.path.join(work_dir, 'jobStore')
+   
+
     with open(config_path, 'w') as f:
-        f.write(generate_config(args.star, args.rsem, args.kallisto, mount,
+        f.write(generate_config(args.star, args.rsem, args.kallisto, args.hera, output_dir,
                                 args.disable_cutadapt, args.save_bam, args.save_wiggle,
-                                args.bamqc))
+                                args.bamqc, args.max_sample_size))
     loglevel = log.getEffectiveLevel()
 
     command = ['toil-rnaseq', 'run',
-               job_store,
-               '--config', config_path,
-               '--workDir', work_dir,
-               args.toilLoggingOption,
-               '--retryCount', '1']
+           job_store,
+           '--config', config_path,
+           args.toilLoggingOption,
+           '--retryCount', '1']
+
+    if args.auto_scale:
+        # Pick the working directory carefully; it must exist on the workers
+        # Do not let Toil pick the directory because this will not work when
+        # launching the workflow with Dockstore because dockstore uses cwltool
+        # which makes the file system read only which will prevent Toil from 
+        # creating the directory. We cannot use a directory like
+        # /home/ubunut/... becuase that does not exist on coreos which is what
+        # the worker nodes use for an OS; '/tmp' will usually already be 
+        # created on most Linux distributions
+        command.extend(['--workDir', '/tmp'])
+    else:
+        command.extend(['--workDir', work_dir])
+
+
     if args.resume:
         command.append('--restart')
     if args.cores:
         command.append('--maxCores={}'.format(args.cores))
-    path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, args.sample_paired, work_dir, args.output_basename)
+    path_to_manifest = generate_manifest(args.sample_tar, args.sample_single, \
+        args.sample_paired, work_dir, args.output_basenames)
     command.append('--manifest=' + path_to_manifest)
+
+    if args.auto_scale:
+        # get the private ip address of the VM on which the container is running
+        # this probably requires the --net=host option with the docker run
+        # commmand. This will be where the mesos master is running.
+        private_ip_address = socket.gethostbyname(socket.gethostname())
+        # add the extra options to run autoscaling to the command to run the pipeline
+        autoscale_options = ['--provisioner', args.provisioner, '--nodeType',
+            args.node_type, '--batchSystem', 'mesos', '--maxNodes', str(args.max_nodes),
+            '--mesosMaster', private_ip_address + ':5050', '--logLevel', 'DEBUG']
+        command.extend(autoscale_options)
+
+        if args.provisioner == 'aws':
+            os.environ['AWS_ACCESS_KEY_ID'] = args.credentials_id
+            os.environ['AWS_SECRET_ACCESS_KEY'] = args.credentials_secret_key
+
     try:
-        log.info('Docker Comand: ' + str(command))
+        log.info('Docker Command: ' + str(command))
         subprocess.check_call(command)
     except subprocess.CalledProcessError as e:
         print(e.message, file=sys.stderr)
@@ -73,14 +142,20 @@ def call_pipeline(mount, args):
         except Exception as e:
             print("\nERROR: FAIL file mv exception information:" + str(e), file=sys.stderr)
 
-def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output_basename):
+def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output_basenames):
     path = os.path.join(workdir, 'manifest-toil-rnaseq.tsv')
     if sample_tars:
         sample_tars = map(fileURL, sample_tars)
     if sample_pairs:
+
+        print('generate manifest sample pairs:{}'.format(sample_pairs))
+        log.info('generate manifest sample pairs:{}'.format(sample_pairs))
+        print('generate manifest output base names:{}'.format(output_basenames))
+        log.info('generate manifest ouput base names:{}'.format(output_basenames))
+
         sample_pairs = map(lambda sample: formatPairs(sample, workdir), sample_pairs)
     if sample_singles:
-        sample_singles = map(lambda sample: formatSingles(sample, workdir), sample_singles)
+        sample_singles = map(fileURL, sample_singles)
     log.info('Path to manifest: ' + workdir)
     with open(path, 'w') as f:
         for samples in (sample_pairs, sample_tars, sample_singles):
@@ -88,24 +163,16 @@ def generate_manifest(sample_tars, sample_singles, sample_pairs, workdir, output
                 continue
             type = 'fq' if samples != sample_tars else 'tar'
             pairing = 'paired' if samples != sample_singles else 'single'
-            f.write('\n'.join('\t'.join([type, pairing, getSampleName(sample, output_basename), sample]) for sample in samples))
+            f.write('\n'.join('\t'.join([type, pairing, getSampleName(sample, \
+                output_basename), sample]) for sample, output_basename in zip(samples, output_basenames)))
             f.write('\n')
     return path
 
 
-def catFiles(outputFile, inputFiles):
-    '''
-    Routine to concatenate input files, gzipped or not using cat
-    For gzipped files this is much faster than using python gunzip
-    see https://www.biostars.org/p/136025/ and https://www.biostars.org/p/81924/
-    '''
-    command = 'cat'
-    with open(outputFile, 'w') as outfile:
-        subprocess.check_call([command] + inputFiles, stdout=outfile)
-    return outputFile
-
 def fileURL(sample):
-    return 'file://' + sample
+    if sample.startswith('/') or sample.startswith('.'):
+        sample = 'file://' + sample
+    return sample
 
 
 def getSampleName(sample, output_basename):
@@ -119,56 +186,54 @@ def getSampleName(sample, output_basename):
 
 
 def formatPairs(sample_pairs, work_mount):
-    def formatPair(name):
-        pairList = [name, name]
-        for index in range(0, len(pairList)):
-            for ending in ('.fastq.gz', '.fastq', '.fq.gz', '.fq'):
-                if pairList[index].endswith(ending):
-                    baseName = pairList[index].split(ending)[0] # TODO: RENAME FILE NOT THE STRING
-                    baseName += 'merged'
-                    if index % 2 == 0:
-                        pairList[index] = baseName + 'R1' + ending
-                        break
-                    elif index % 2 == 1:
-                        pairList[index] = baseName + 'R2' + ending
-                        break
-        return pairList
+    r1, r2 = [], []
+    
+    print('sample pairs:{}'.format(sample_pairs))
+    log.info('sample pairs:{}'.format(sample_pairs))
+    fastqs = sample_pairs.split(',')
+    # Pattern convention: Look for "R1" / "R2" in the filename, or "_1" / "_2" before the extension
+    pattern = re.compile('(?:^|[._-])(R[12]|[12]\.f)')
+    for fastq in sorted(fastqs):
+        match = pattern.search(os.path.basename(fastq))
+        fastq = fileURL(fastq)
+        if not match:
+            log.info('FASTQ file name fails to meet required convention for paired reads '
+                            '(see documentation). ' + fastq)
+            exit(1)
+        elif '1' in match.group():
+            r1.append(fastq)
+        elif '2' in match.group():
+            r2.append(fastq)
+        else:
+            assert False, match.group()
+    require(len(r1) == len(r2), 'Check fastq names, uneven number of pairs found.\nr1: {}\nr2: {}'.format(r1, r2))
+    interleaved_samples = zip(r1, r2)
+    # flatten the list of tuples and join them into a comma delimited string
+    # https://stackoverflow.com/questions/40993966/python-convert-tuple-to-comma-separated-string
+    comma_delimited_samples = ','.join(map(str,chain.from_iterable(interleaved_samples)))
+    log.info('comma delimited samples:{}'.format(comma_delimited_samples))
+    return comma_delimited_samples
 
-    sample_pairs = sample_pairs.split(',')
-    assert len(sample_pairs) % 2 == 0
-    outputName = os.path.join(work_mount, os.path.basename(sample_pairs[0]))
-    outputFiles = formatPair(outputName)
-    catFiles(outputFiles[0], sample_pairs[::2])
-    catFiles(outputFiles[1], sample_pairs[1::2])
-    return fileURL(outputFiles[0]) + ',' + fileURL(outputFiles[1])
 
-def formatSingles(sample_singles, work_mount):
-    def formatSingle(single):
-        for ending in ('.fastq.gz', '.fastq', '.fq.gz', '.fq'):
-            if single.endswith(ending):
-                baseName = single.split(ending)[0]  # TODO: RENAME FILE NOT THE STRING
-                baseName += 'merged'
-                return baseName + ending
-    sample_singles = sample_singles.split(',')
-    output = formatSingle(os.path.join(work_mount, os.path.basename(sample_singles[0])))
-    catFiles(output, sample_singles)
-    return fileURL(output)
-
-def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cutadapt, save_bam,
-                    save_wiggle, bamqc):
+def generate_config(star_path, rsem_path, kallisto_path, hera_path, output_dir, disable_cutadapt, save_bam,
+                    save_wiggle, bamqc, max_sample_size):
     cutadapt = True if not disable_cutadapt else False
     bamqc = bool(bamqc)
 
+    
     if star_path:
-        star_path = "file://" + star_path
+        star_path = fileURL(star_path)
     if kallisto_path:
-        kallisto_path = "file://" + kallisto_path
+        kallisto_path = fileURL(kallisto_path)
     if rsem_path:
-        rsem_path = "file://" + rsem_path
-
+        rsem_path = fileURL(rsem_path)
+    if hera_path:
+        hera_path = fileURL(hera_path)
+   
     return textwrap.dedent("""
         star-index: {star_path}
         kallisto-index: {kallisto_path}
+        hera-index: {hera_path}
         rsem-ref: {rsem_path}
         output-dir: {output_dir}
         cutadapt: {cutadapt}
@@ -181,6 +246,7 @@ def generate_config(star_path, rsem_path, kallisto_path, output_dir, disable_cut
         wiggle: {save_wiggle}
         save-bam: {save_bam}
         ci-test:
+        max-sample-size: {max_sample_size}
     """[1:].format(**locals()))
 
 def main():
@@ -226,14 +292,20 @@ def main():
                         help='Absolute path to sample tarball.')
     parser.add_argument('--sample-single', default=[], action="append",
                         help='Absolute path to sample single-ended FASTQ.')
-    parser.add_argument('--sample-paired', default=[], action="append",
+    parser.add_argument('--sample-paired', nargs='*', default=[],
                         help='Absolute path to sample paired FASTQs, in the form `read1,read2,read1,read2`.')
-    parser.add_argument('--star', type=str, required=True,
+    parser.add_argument('--output-basenames', nargs='*', default=[],
+                        help='Base names to use for naming the output files ')
+
+
+    parser.add_argument('--star', type=str, default="",
                         help='Absolute path to STAR index tarball.')
-    parser.add_argument('--rsem', type=str, required=True,
+    parser.add_argument('--rsem', type=str, default="",
                         help='Absolute path to rsem reference tarball.')
-    parser.add_argument('--kallisto', type=str, required=True,
+    parser.add_argument('--kallisto', type=str, default="",
                         help='Absolute path to kallisto index (.idx) file.')
+    parser.add_argument('--hera', type=str, default="",
+                        help='Absolute path to hera index (.idx) file.')
     parser.add_argument('--disable-cutadapt', action='store_true', default=False,
                         help='Cutadapt fails if samples are improperly paired. Use this flag to disable cutadapt.')
     parser.add_argument('--save-bam', action='store_true', default='false',
@@ -251,8 +323,32 @@ def main():
     parser.add_argument('--work_mount', required=True,
                         help='Mount where intermediate files should be written. This directory '
                              'should be mirror mounted into the container.')
-    parser.add_argument('--output-basename', default="",
-                        help='Base name to use for naming the output files ')
+    parser.add_argument('--max-sample-size', default="20G",
+                        help='Maximum size of sample file using Toil resource requirements '
+                        "syntax, e.g '20G'. Standard suffixes like K, Ki, M, Mi, G or Gi are supported.")
+
+    auto_scale_options  = parser.add_argument_group('Auto-scaling options')
+    auto_scale_options.add_argument('--auto-scale', action='store_true', default=False,
+                        help='Enable Toil autoscaling. Disabled by default')
+    auto_scale_options.add_argument('--cluster-name', default="",
+                        help='Name of the Toil cluster. Usually the security group name')
+    auto_scale_options.add_argument('--job-store', default="aws:us-west-2:autoscaling-toil-rnaseq-jobstore-2",
+                        help='Directory in cloud where working files will be put; '
+                        'e.g. aws:us-west-2:autoscaling-toil-rnaseq-jobstore')
+    auto_scale_options.add_argument('--output-location', default="s3://toil-rnaseq-cloud-staging-area",
+                        help='Directory in cloud where  output files will be put; '
+                        'e.g. s3://toil-rnaseq-cloud-staging-area')
+    auto_scale_options.add_argument('--provisioner', default="aws",
+                        help='Cloud provisioner to use. E.g aws')
+    auto_scale_options.add_argument('--node-type', default="c3.8xlarge",
+                        help='Cloud worker VM type; e.g. c3.8xlarge')
+    auto_scale_options.add_argument('--max-nodes', type=int, default=2,
+                        help='Maximum worker nodes to launch. E.g. 2')
+    auto_scale_options.add_argument('--credentials-id', default="",
+                        help='Credentials id')
+    auto_scale_options.add_argument('--credentials-secret-key', default="",
+                        help='Credentials secret key')
+
     # although we don't actually set the log level in this module, the option is propagated to toil. For this reason
     # we want the logging options to show up with we run --help
     addLoggingOptions(parser)
@@ -268,6 +364,15 @@ def main():
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(1)
+
+    if args.auto_scale:
+        if not args.cluster_name:
+           log.info('Auto-scaling requires a cluster name to be input with the --cluster-name option')
+           parser.error('Auto-scaling requires a cluster name to be input with the --cluster-name option')
+        if not args.credentials_id or not args.credentials_secret_key:
+           log.info('Auto-scaling requires provisioner credentials id and secret key')
+           parser.error('Auto-scaling requires provisioner credentials id and secret key')
+
     # Get name of most recent running container. If socket is mounted, should be this one.
     try:
         name = subprocess.check_output(['docker', 'ps', '--format', '{{.Names}}']).split('\n')[0]
@@ -285,12 +390,24 @@ def main():
     for samples in [args.sample_tar, args.sample_paired, args.sample_single]:
         if not samples:
             continue
-        # If sample is given as relative path, assume it's in the work directory
-        if not all(x.startswith('/') for x in samples):
-            samples = [os.path.join(work_mount, x) for x in samples if not x.startswith('/')]
-            log.info('\nSample given as relative path, assuming sample is in work directory: {}'.format(work_mount[0]))
+
         # Enforce file input standards
-        require(all(x.startswith('/') for x in samples),
+        if args.auto_scale:
+            require(len(args.output_basenames) == len(samples), "There must be a "
+            "unique output filename for each sample. You provided {}".format(args.output_basenames))
+
+            require(all( ((x.lower().startswith('http://') or x.lower().startswith('s3://') \
+                or x.lower().startswith('ftp://')) or not x) for x in samples),
+            "Sample inputs must point to a file's full path, "
+            "e.g. 's3://full/path/to/sample_R1.fastq.gz', and should start with "
+            " file://, http://, s3://, or ftp://.  You provided %s", str(samples))
+        else:
+            # If sample is given as relative path, assume it's in the work directory
+            if not all(x.startswith('/') for x in samples):
+                samples = [os.path.join(work_mount, x) for x in samples if not x.startswith('/')]
+                log.info('\nSample given as relative path, assuming sample is in work directory: {}'.format(work_mount[0]))
+
+            require(all(x.startswith('/') for x in samples),
                 "Sample inputs must point to a file's full path, "
                 "e.g. '/full/path/to/sample1.tar'. You provided %s", str(samples))
         if samples == args.sample_tar:
@@ -300,15 +417,24 @@ def main():
         if samples == args.sample_single:
             log.info('Single FASTQS to run: {}'.format('\t'.join(args.sample_single)))
 
-    #print("star {} kallisto {} rsem {} args".format(args.star, args.kallisto, args.rsem))
-    #Input for star and rsem will be empty if user wants to run kallisto only so test for not x
-    require(all( (x.startswith('/') or not x) for x in [args.star, args.kallisto, args.rsem]),
+
+    #file paths should start with /, file://, http://, s3://, or ftp://
+    if args.auto_scale:
+        require(all( ((x.lower().startswith('http://') or x.lower().startswith('s3://') \
+                or x.lower().startswith('ftp://')) or not x) for x in [args.star, \
+                             args.kallisto, args.rsem, args.hera]),
             "Sample inputs must point to a file's full path, "
-            "e.g. '/full/path/to/kallisto_hg38.idx'.")
+            "e.g. 's3://full/path/to/kallisto_hg38.idx', and should start with file://, http://, s3://, or ftp://.")
+    else:
+        #Input for star and rsem will be empty if user wants to run kallisto only so test for not x
+        require(all( (x.startswith('/') or not x) for x in [args.star, 
+                             args.kallisto, args.rsem, args.hera]),
+            "Sample inputs must point to a file's full path, "
+            "e.g. '/full/path/to/kallisto_hg38.idx'")
 
     # Output log information
     log.info('The work mount is: {}'.format(work_mount))
-    log.info('Pipeline input locations: \n{}\n{}\n{}'.format(args.star, args.rsem, args.kallisto))
+    log.info('Pipeline input locations: \n{}\n{}\n{}\n{}'.format(args.star, args.rsem, args.kallisto, args.hera))
     call_pipeline(work_mount, args)
 
 if __name__ == '__main__':
