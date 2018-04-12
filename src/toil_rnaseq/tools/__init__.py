@@ -8,4 +8,4 @@ hera_version = 'quay.io/ucsc_cgl/hera:1.1--5f2b2b45776536d46a60b377b52b846694c53
 
 samtools_version = 'quay.io/ucsc_cgl/samtools:1.5--98b58ba05641ee98fa98414ed28b53ac3048bc09'
 picardtools_version = 'quay.io/ucsc_cgl/picardtools:2.10.9--23fc31175415b14dbf337216f9ae14d3acc3d1eb'
-gdc_version = 'sbamin/gdc-client:1.2.0'
+gdc_version = 'quay.io/ucsc_cgl/gdc-client:1.2--a362c0dbff4fc95e37299769c2506ffa3db62ea8'
