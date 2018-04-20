@@ -21,6 +21,7 @@ For detailed information and troubleshooting, see the [Wiki](https://github.com/
 - [Examples](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Examples)
 - [Methods](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Methods)
 - [Troubleshooting](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Troubleshooting)
+- [Auto-scaling on AWS](https://github.com/BD2KGenomics/toil-rnaseq/wiki/Auto-scaling-Example-Using-AWS)
 
 
 ## Overview
