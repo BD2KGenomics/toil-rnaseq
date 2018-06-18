@@ -58,7 +58,7 @@ def workflow(job, sample, config):
     if config.file_type == 'bam':
         disk = '2G' if config.ci_test else config.max_sample_size
         disk = human2bytes(disk) * 5
-        inputs = job.wrapJobFn(download_and_process_bam, config, disk=disk)
+        inputs = job.wrapJobFn(download_and_process_bam, config, disk=disk).encapsulate()
 
     elif config.file_type == 'tar':
         inputs = job.wrapJobFn(download_and_process_tar, config).encapsulate()
