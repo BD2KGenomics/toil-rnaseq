@@ -10,3 +10,4 @@ __pycache__
 /bin/s3am
 *.DONE
 *.docker
+.idea
