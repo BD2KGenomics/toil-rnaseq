@@ -67,7 +67,7 @@ def download_and_process_tar(job, config):
     disk = '2G' if config.ci_test else config.max_sample_size
     download = job.wrapJobFn(download_url_job, config.url, s3_key_path=config.ssec, disk=disk)
     process = job.wrapJobFn(process_sample, config, input_tar=download.rv(),
-                            disk=PromisedRequirement(lambda x: x.size * 5, download.rv()))
+                            disk=PromisedRequirement(lambda x: x.size * 10, download.rv()))
 
     # Wire jobs and return processed fastqs
     job.addChild(download)
@@ -87,7 +87,7 @@ def download_and_process_fastqs(job, config):
     disk = '2G' if config.ci_test else config.max_sample_size
     download = job.wrapJobFn(multiple_fastq_dowloading, config, sample_disk=disk).encapsulate()
     process = job.wrapJobFn(process_sample, config, fastq_ids=download.rv(),
-                            disk=PromisedRequirement(lambda xs: sum(x.size for x in xs) * 3, download.rv()))
+                            disk=PromisedRequirement(lambda xs: sum(x.size for x in xs) * 5, download.rv()))
 
     # Wire jobs and return processed fastqs
     job.addChild(download)

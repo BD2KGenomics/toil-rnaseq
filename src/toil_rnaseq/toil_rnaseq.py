@@ -102,7 +102,7 @@ def workflow(job, sample, config):
             disk = '2G'
             mem = '2G'
         else:
-            disk = PromisedRequirement(lambda xs: sum(x.size for x in xs if x) + human2bytes('25G'), inputs.rv())
+            disk = PromisedRequirement(lambda xs: sum(x.size for x in xs if x) + human2bytes('50G'), inputs.rv())
             mem = '40G'
 
         # STAR returns: transcriptome_id, star_id, aligned_id, wiggle_id
@@ -115,13 +115,15 @@ def workflow(job, sample, config):
 
         # Handle optional files user can save
         if config.save_bam:
-            star.addChildJobFn(sort_and_save_bam, config, bam_id=star.rv(2), skip_sort=sort)
+            disk = PromisedRequirement(lambda x: x.size, star.rv(2))
+            star.addChildJobFn(sort_and_save_bam, config, bam_id=star.rv(2), skip_sort=sort, disk=disk)
         if config.wiggle:
-            star.addChildJobFn(save_wiggle, config, wiggle_id=star.rv(3))
+            disk = PromisedRequirement(lambda x: x.size, star.rv(3))
+            star.addChildJobFn(save_wiggle, config, wiggle_id=star.rv(3), disk=disk)
 
         # RSEM returns: gene_id, isoform_id
         rsem = job.wrapJobFn(run_rsem, bam_id=star.rv(0), rsem_ref_url=config.rsem_ref, paired=config.paired,
-                             cores=cores, disk=PromisedRequirement(lambda x: x.size + human2bytes('2G'), star.rv(0)))
+                             cores=cores, disk=PromisedRequirement(lambda x: x.size + human2bytes('20G'), star.rv(0)))
         star.addChild(rsem)
 
         # RSEM postprocess returns: rsem_id, rsem_hugo_id
