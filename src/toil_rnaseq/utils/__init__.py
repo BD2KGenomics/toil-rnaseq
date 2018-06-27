@@ -312,6 +312,11 @@ def configuration_sanity_checks(config):
     if not config.output_dir.endswith('/'):
         config.output_dir += '/'
 
+    # Create directory if local and doesn't exist
+    if config.output_dir.startswith('/'):
+        if not os.path.exists(config.output_dir):
+            mkdir_p(config.output_dir)
+
     # Program checks
     for program in ['curl', 'docker']:
         require(next(which(program), None), program + ' must be installed on every node.'.format(program))
