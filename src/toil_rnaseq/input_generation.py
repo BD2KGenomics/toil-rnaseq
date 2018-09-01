@@ -2,7 +2,6 @@
 import argparse
 import logging
 import os
-import subprocess
 import sys
 from multiprocessing import cpu_count
 
@@ -10,6 +9,7 @@ from toil.job import Job
 from toil.lib.docker import dockerCall
 
 from utils.files import move_files
+from utils.files import tarball_files
 from utils.urls import download_url
 
 logging.basicConfig(level=logging.INFO)
@@ -36,12 +36,11 @@ def root(job, args):
 
 
 def star_index(job, args):
-    work_dir = job.fileStore.getLocalTempDir()
-    download_url(url=args.ref, name='ref.fa', work_dir=work_dir)
-    download_url(url=args.gtf, name='annotation.gtf', work_dir=work_dir)
+    download_url(url=args.ref, name='ref.fa', work_dir=job.tempDir)
+    download_url(url=args.gtf, name='annotation.gtf', work_dir=job.tempDir)
 
     # Run STAR to generate index
-    star_dir = os.path.join(work_dir, args.star_name)
+    star_dir = os.path.join(job.tempDir, args.star_name)
     os.mkdir(star_dir)
     parameters = ['--runThreadN', str(args.cores),
                   '--runMode', 'genomeGenerate',
@@ -49,28 +48,29 @@ def star_index(job, args):
                   '--genomeFastaFiles', 'ref.fa',
                   '--sjdbGTFfile', 'annotation.gtf']
     dockerCall(job, tool='quay.io/ucsc_cgl/star:2.4.2a--bcbd5122b69ff6ac4ef61958e47bde94001cfe80',
-               workDir=work_dir, parameters=parameters)
+               workDir=job.tempDir, parameters=parameters)
 
     # Compress starIndex into a tarball
-    subprocess.check_call(['tar', '-zcvf', star_dir + '.tar.gz', star_dir])
+    star_tar = '{}.tar.gz'.format(args.star_name)
+    tarball_files(star_tar, file_paths=[star_dir], output_dir=job.tempDir)
 
     # Move to output dir or return
+    tar_path = os.path.join(job.tempDir, star_tar)
     if _move_instead_of_return:
-        move_files([star_dir + '.tar.gz'], args.output_dir)
+        move_files([tar_path], args.output_dir)
     else:
-        return job.fileStore.readGlobalFile(star_dir + '.tar.gz')
+        return job.fileStore.readGlobalFile(tar_path)
 
 
 def rsem_index(job, args):
-    work_dir = job.fileStore.getLocalTempDir()
-    download_url(url=args.ref, name='ref.fa', work_dir=work_dir)
-    download_url(url=args.gtf, name='annotation.gtf', work_dir=work_dir)
+    download_url(url=args.ref, name='ref.fa', work_dir=job.tempDir)
+    download_url(url=args.gtf, name='annotation.gtf', work_dir=job.tempDir)
 
     # Run RSEM to generate reference
-    rsem_dir = os.path.join(work_dir, args.rsem_name)
+    rsem_dir = os.path.join(job.tempDir, args.rsem_name)
     os.mkdir(rsem_dir)
     docker_parameters = ['--entrypoint', 'rsem-prepare-reference',
-                         '-v', '{}:/data'.format(work_dir),
+                         '-v', '{}:/data'.format(job.tempDir),
                          '--rm', '--log-driver=none']
     parameters = ['-p', str(args.cores),
                   '--gtf', '/data/annotation.gtf',
@@ -80,30 +80,30 @@ def rsem_index(job, args):
                parameters=parameters, dockerParameters=docker_parameters)
 
     # Compress rsemRef into a tarball
-    subprocess.check_call(['tar', '-zcvf', rsem_dir + '.tar.gz', rsem_dir])
+    rsem_tar = '{}.tar.gz'.format(args.rsem_name)
+    tarball_files(rsem_tar, file_paths=[rsem_dir], output_dir=job.tempDir)
 
     # Move to output dir
+    tar_path = os.path.join(job.tempDir, rsem_tar)
     if _move_instead_of_return:
-        move_files([rsem_dir + '.tar.gz'], args.output_dir)
+        move_files([tar_path], args.output_dir)
     else:
-        return job.fileStore.readGlobalFile(rsem_dir + '.tar.gz')
+        return job.fileStore.readGlobalFile(tar_path)
 
 
 def kallisto_index(job, args):
-    work_dir = job.fileStore.getLocalTempDir()
-
     if args.transcriptome:
-        download_url(url=args.transcriptome, name='transcriptome.fa', work_dir=work_dir)
+        download_url(url=args.transcriptome, name='transcriptome.fa', work_dir=job.tempDir)
     else:
-        _create_transcriptome(job, args, work_dir)
+        _create_transcriptome(job, args, job.tempDir)
 
     # Run Kallisto Index
     parameters = ['index', 'transcriptome.fa', '-i', '/data/{}.index'.format(args.kallisto_name)]
     dockerCall(job, tool='quay.io/ucsc_cgl/kallisto:0.43.1--355c19b1fb6fbb85f7f8293e95fb8a1e9d0da163',
-               workDir=work_dir, parameters=parameters)
+               workDir=job.tempDir, parameters=parameters)
 
     # Move to output dir
-    output_path = os.path.join(work_dir, args.kallisto_name + '.index')
+    output_path = os.path.join(job.tempDir, args.kallisto_name + '.index')
     if _move_instead_of_return:
         move_files([output_path], args.output_dir)
     else:
@@ -120,33 +120,33 @@ def _create_transcriptome(job, args, work_dir):
 
 
 def hera_index(job, args):
-    work_dir = job.fileStore.getLocalTempDir()
-
     # Download input files
-    download_url(url=args.ref, name='ref.fa', work_dir=work_dir)
-    download_url(url=args.gtf, name='annotation.gtf', work_dir=work_dir)
+    download_url(url=args.ref, name='ref.fa', work_dir=job.tempDir)
+    download_url(url=args.gtf, name='annotation.gtf', work_dir=job.tempDir)
 
     # Run Hera build
-    hera_dir = os.path.join(work_dir, args.hera_name)
+    hera_dir = os.path.join(job.tempDir, args.hera_name)
     os.mkdir(hera_dir)
-    docker_parameters = ['--rm', '--log-driver=none', '-v', '{}:/data'.format(work_dir),
+    docker_parameters = ['--rm', '--log-driver=none', '-v', '{}:/data'.format(job.tempDir),
                          '--entrypoint=/hera/build/hera_build']
     parameters = ['--fasta', '/data/ref.fa', '--gtf', '/data/annotation.gtf', '--outdir', '/data']
     dockerCall(job, tool='jvivian/hera',
-               workDir=work_dir, parameters=parameters, dockerParameters=docker_parameters)
+               workDir=job.tempDir, parameters=parameters, dockerParameters=docker_parameters)
 
     # No naming options during creation so fix here
     if args.hera_name != 'hera-index':
-        os.rename(os.path.join(work_dir, 'hera-index'), hera_dir)
+        os.rename(os.path.join(job.tempDir, 'hera-index'), hera_dir)
 
     # Compress
-    subprocess.check_call(['tar', '-zcvf', hera_dir + '.tar.gz', hera_dir])
+    hera_tar = '{}.tar.gz'.format(args.hera_name)
+    tarball_files(hera_tar, file_paths=[hera_dir], output_dir=job.tempDir)
 
     # Move to output dir
+    tar_path = os.path.join(job.tempDir, hera_tar)
     if _move_instead_of_return:
-        move_files([hera_dir + '.tar.gz'], args.output_dir)
+        move_files([tar_path], args.output_dir)
     else:
-        return job.fileStore.readGlobalFile(hera_dir + '.tar.gz')
+        return job.fileStore.readGlobalFile(tar_path)
 
 
 def main():
