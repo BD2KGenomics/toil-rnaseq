@@ -78,17 +78,17 @@ def generate_config():
         ##############################################################################################################
 
         # URL {scheme} to index tarball used by STAR
-        star-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/starIndex_hg38_no_alt.tar.gz
+        star-index: http://courtyard.gi.ucsc.edu/~jvivian/toil-rnaseq-inputs/starIndex_hg38_no_alt.tar.gz
 
         # URL {scheme} to reference tarball used by RSEM
         # Running RSEM requires a star-index as a well as an rsem-ref
-        rsem-ref: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/rsem_ref_hg38_no_alt.tar.gz
+        rsem-ref: http://courtyard.gi.ucsc.edu/~jvivian/toil-rnaseq-inputs/rsem_ref_hg38_no_alt.tar.gz
 
         # URL {scheme} to kallisto index file. 
-        kallisto-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/kallisto_hg38.idx
+        kallisto-index: http://courtyard.gi.ucsc.edu/~jvivian/toil-rnaseq-inputs/kallisto_hg38.idx
         
         # URL {scheme} to hera index
-        hera-index: http://hgwdev.soe.ucsc.edu/~jtvivian/toil-rnaseq-inputs/hera-index.tar.gz
+        hera-index: http://courtyard.gi.ucsc.edu/~jvivian/toil-rnaseq-inputs/hera-index.tar.gz
         
         # Maximum file size of input sample (for resource allocation during initial download)
         max-sample-size: 20G
