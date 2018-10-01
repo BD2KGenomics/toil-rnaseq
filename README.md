@@ -2,7 +2,7 @@
 ## Toil RNA-Seq Pipeline
 #### Scalable, reproducible, and robust RNA-seq expression quantification. 
 
-The [Toil](https://github.com/BD2KGenomics/toil) RNA-seq workflow converts RNA sqeuencing data into gene- and 
+The [Toil](https://github.com/BD2KGenomics/toil) RNA-seq workflow converts RNA sequencing data into gene- and 
 transcript-level expression quantification. 
 
 Please open [issues](https://github.com/BD2KGenomics/toil-rnaseq/issues) for any bugs, errors, corrections, 
