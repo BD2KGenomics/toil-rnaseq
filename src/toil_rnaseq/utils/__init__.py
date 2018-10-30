@@ -97,7 +97,7 @@ def generate_config():
         #                                   WORKFLOW OPTIONS (Quality Control)                                       #
         ##############################################################################################################
 
-        # If true, will preprocess samples with cutadapt using adapter sequences.
+        # If true, will preprocess samples with cutadapt using adapter sequences
         cutadapt: true
 
         # Adapter sequence to trim when running CutAdapt. Defaults set for Illumina
@@ -108,6 +108,10 @@ def generate_config():
 
         # If true, will run FastQC and include QC in sample output
         fastqc: true 
+        
+        # If true, will run UMEND BamQC and include statistics about Uniquely Mapped Exonic Non-Duplicate (UMEND) reads
+        # If bamqc and save-bam are enabled, a bam with duplicates marked (output of BAMQC) is saved
+        bamqc: 
 
         ##############################################################################################################
         #                   CREDENTIAL OPTIONS (for downloading samples from secure locations)                       #
@@ -124,7 +128,7 @@ def generate_config():
         ##############################################################################################################        
 
         # Optional: If true, saves the wiggle file (.bg extension) output by STAR
-        # WARNING: Requires STAR sorting, which has memory leak issues that can crash the workflow. 
+        # WARNING: Requires STAR sorting, which has memory leak issues that can crash the workflow 
         wiggle: 
 
         # Optional: If true, saves the aligned BAM (by coordinate) produced by STAR

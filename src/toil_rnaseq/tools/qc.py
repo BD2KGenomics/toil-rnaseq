@@ -1,12 +1,11 @@
 import os
-from urlparse import urlparse
 
 from toil.lib.docker import dockerCall
 
+from toil_rnaseq.tools import bamqc_version
 from toil_rnaseq.tools import fastqc_version
-from toil_rnaseq.utils.files import copy_files
 from toil_rnaseq.utils.files import tarball_files
-from toil_rnaseq.utils.urls import s3am_upload
+from toil_rnaseq.utils.urls import move_or_upload
 
 
 def run_fastqc(job, r1_id, r2_id):
@@ -37,49 +36,37 @@ def run_fastqc(job, r1_id, r2_id):
     return job.fileStore.writeGlobalFile(os.path.join(job.tempDir, 'fastqc.tar.gz'))
 
 
-# Deprecated until further development
-def run_bam_qc(job, aligned_bam_id, config):
+def run_bamqc(job, aligned_bam_id, config, save_bam=False):
     """
-    Run BAM QC as specified by California Kids Cancer Comparison (CKCC)
+    Run BAMQC as specified by Treehouse (UCSC)
+    https://github.com/UCSC-Treehouse/bam-umend-qc
 
     :param JobFunctionWrappingJob job:
     :param str aligned_bam_id: FileStoreID of aligned bam from STAR
-    :param Namespace config: Argparse Namespace object containing argument inputs
-        Must contain:
-            config.uuid str: UUID of input sample
-            config.save_bam bool: True/False depending on whether to save bam
-            config.output_dir str: Path to save bam
-            config.ssec str: Path to encryption key for secure upload to S3
-    :return: boolean flag, FileStoreID for output bam, and FileStoreID for output tar
-    :rtype: tuple(bool, str, str)
+    :param Expando config: Contains sample information
+    :param bool save_bam: Option to save mark-duplicate bam from BAMQC
+    :return: FileStoreID for output tar
+    :rtype: str
     """
-    work_dir = job.fileStore.getLocalTempDir()
-    job.fileStore.readGlobalFile(aligned_bam_id, os.path.join(work_dir, 'rnaAligned.sortedByCoord.out.bam'))
-    dockerCall(job, tool='hbeale/treehouse_bam_qc:1.0', workDir=work_dir, parameters=['runQC.sh', str(job.cores)])
+    job.fileStore.readGlobalFile(aligned_bam_id, os.path.join(job.tempDir, 'input.bam'))
+    dockerCall(job, tool=bamqc_version, workDir=job.tempDir, parameters=['/data/input.bam', '/data'])
 
     # Tar Output files
-    output_names = ['readDist.txt', 'rnaAligned.out.md.sorted.geneBodyCoverage.curves.pdf',
-                    'rnaAligned.out.md.sorted.geneBodyCoverage.txt']
-    if os.path.exists(os.path.join(work_dir, 'readDist.txt_PASS_qc.txt')):
-        output_names.append('readDist.txt_PASS_qc.txt')
-        fail_flag = False
-    else:
-        output_names.append('readDist.txt_FAIL_qc.txt')
-        fail_flag = True
-    output_files = [os.path.join(work_dir, x) for x in output_names]
-    tarball_files(tar_name='bam_qc.tar.gz', file_paths=output_files, output_dir=work_dir)
+    output_names = ['readDist.txt', 'bam_umend_qc.tsv', 'bam_umend_qc.json']
+    output_files = [os.path.join(job.tempDir, x) for x in output_names]
+    tarball_files(tar_name='bam_qc.tar.gz', file_paths=output_files, output_dir=job.tempDir)
+    tar_path = os.path.join(job.tempDir, 'bam_qc.tar.gz')
 
-    # Save output BAM
-    if config.save_bam:
-        bam_path = os.path.join(work_dir, 'rnaAligned.sortedByCoord.md.bam')
-        new_bam_path = os.path.join(work_dir, config.uuid + '.sortedByCoord.md.bam')
-        os.rename(bam_path, new_bam_path)
-        if urlparse(config.output_dir).scheme == 's3' and config.ssec:
-            s3am_upload(fpath=new_bam_path, s3_dir=config.output_dir, s3_key_path=config.ssec)
-        elif urlparse(config.output_dir).scheme != 's3':
-            copy_files(file_paths=[new_bam_path], output_dir=config.output_dir)
+    # Save output BAM - this step is done here instead of in its own job for efficiency
+    if save_bam:
+        # Tag bam with sample UUID, upload, and delete
+        bam_path = os.path.join(job.tempDir, 'sortedByCoord.md.bam')
+        new_bam = os.path.join(job.tempDir, config.uuid + '.sortedByCoord.md.bam')
+        os.rename(bam_path, new_bam)
+        move_or_upload(config, [new_bam])
+        job.fileStore.deleteGlobalFile(new_bam)
 
     # Delete intermediates
     job.fileStore.deleteGlobalFile(aligned_bam_id)
 
-    return fail_flag, job.fileStore.writeGlobalFile(os.path.join(work_dir, 'bam_qc.tar.gz'))
+    return job.fileStore.writeGlobalFile(tar_path)

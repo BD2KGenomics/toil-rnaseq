@@ -22,6 +22,7 @@ from tools.jobs import save_wiggle
 from tools.preprocessing import download_and_process_bam
 from tools.preprocessing import download_and_process_fastqs
 from tools.preprocessing import download_and_process_tar
+from tools.qc import run_bamqc
 from tools.qc import run_fastqc
 from tools.quantifiers import run_hera
 from tools.quantifiers import run_kallisto
@@ -107,14 +108,25 @@ def workflow(job, sample, config):
 
         # STAR returns: transcriptome_id, star_id, aligned_id, wiggle_id
         sort = True if config.wiggle else False
+        save_bam = any([config.save_bam, config.bamqc])
         star = job.wrapJobFn(run_star, inputs.rv(0), inputs.rv(1), star_index_url=config.star_index,
-                             wiggle=config.wiggle, sort=sort, save_aligned_bam=config.save_bam,
+                             wiggle=config.wiggle, sort=sort, save_aligned_bam=save_bam,
                              cores=config.cores, memory=mem, disk=disk)
         inputs.addChild(star)
         output['QC/STAR'] = star.rv(1)
 
+        # BamQC
+        if config.bamqc:
+            cores = min(4, config.cores)
+            disk = PromisedRequirement(lambda x: x.size, star.rv(2))
+            bamqc = job.wrapJobFn(run_bamqc, aligned_bam_id=star.rv(2), config=config,
+                                  save_bam=config.save_bam, disk=disk, cores=cores)
+            star.addChild(bamqc)
+            output['QC/BamQC'] = bamqc.rv()
+
         # Handle optional files user can save
-        if config.save_bam:
+        # Note: if bamqc is enabled, the bam is saved within the `run_bamqc` job
+        if config.save_bam and not config.bamqc:
             disk = PromisedRequirement(lambda x: x.size, star.rv(2))
             star.addChildJobFn(sort_and_save_bam, config, bam_id=star.rv(2), skip_sort=sort, disk=disk)
         if config.wiggle:

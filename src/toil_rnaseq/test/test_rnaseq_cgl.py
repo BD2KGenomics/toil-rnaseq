@@ -102,6 +102,7 @@ class RNASeqCGLTest(TestCase):
                     save-bam:
                     fwd-3pr-adapter: AGATCGGAAGAG
                     rev-3pr-adapter: AGATCGGAAGAG
+                    bamqc: true
                     ci-test: true
                     """[1:]).format(output_dir=self.output_dir.geturl(),
                                     input_dir=self.input_dir.geturl()))
