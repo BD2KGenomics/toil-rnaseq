@@ -13,8 +13,8 @@ RUN apt-get update && apt-get install -y \
     ca-certificates
 
 # Get the Docker binary
-RUN curl https://get.docker.com/builds/Linux/x86_64/docker-DOCKERVER.tgz \
-         | tar -xvzf - --transform='s,[^/]*/,,g' -C /usr/local/bin/ \
+RUN curl https://download.docker.com/linux/static/stable/x86_64/docker-DOCKERVER-ce.tgz \
+         | tar -xvzf - -C /tmp && mv /tmp/docker/* /usr/local/bin/ \
          && chmod u+x /usr/local/bin/docker
 
 # Set up a virtual environment with the system site package option so Toil

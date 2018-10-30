@@ -63,6 +63,7 @@ sdist: check_venv
 	$(python) setup.py sdist
 clean_sdist:
 	- rm -rf dist
+	- rm -rf .pytest_cache
 
 
 test: check_venv check_build_reqs

@@ -1,5 +1,5 @@
 # Definitions
-docker_versions = 1.12.3 1.11.2 1.10.3 #1.9.1 1.8.3 1.7.1 1.6.2
+docker_versions = 17.03.0 17.06.0 17.09.0 18.03.0 18.06.0
 gen_directories = $(docker_versions:=.docker)
 build_tool = runtime-container.DONE
 
