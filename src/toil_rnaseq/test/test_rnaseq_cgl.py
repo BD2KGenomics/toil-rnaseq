@@ -37,7 +37,7 @@ class RNASeqCGLTest(TestCase):
         logging.basicConfig(level=logging.INFO)
 
     def setUp(self):
-        self.input_dir = urlparse('s3://cgl-pipeline-inputs/rnaseq_cgl/ci')
+        self.input_dir = urlparse('s3://cgl-pipeline/rnaseq_cgl/ci')
         self.output_dir = urlparse('s3://cgl-driver-projects/test/ci/%s' % uuid4())
         self.sample = urlparse(self.input_dir.geturl() + '/chr6_sample.tar.gz')
         self.bam_sample = urlparse(self.input_dir.geturl() + '/chr6.test.bam')
@@ -89,9 +89,9 @@ class RNASeqCGLTest(TestCase):
         with open(path, 'w') as f:
             f.write(textwrap.dedent("""
                     star-index: {input_dir}/starIndex_chr6.tar.gz
-                    kallisto-index: s3://cgl-pipeline-inputs/rnaseq_cgl/kallisto_hg38.idx
+                    kallisto-index: s3://cgl-pipeline/rnaseq_cgl/kallisto_hg38.idx
                     rsem-ref: {input_dir}/rsem_ref_chr6.tar.gz
-                    hera-index: s3://cgl-pipeline-inputs/rnaseq_cgl/hera-index.tar.gz
+                    hera-index: s3://cgl-pipeline/rnaseq_cgl/hera-index.tar.gz
                     output-dir: {output_dir}
                     max-sample-size: 2G
                     fastqc: true
