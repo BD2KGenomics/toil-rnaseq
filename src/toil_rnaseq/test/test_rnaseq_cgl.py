@@ -1,4 +1,6 @@
 import logging
+import os
+import posixpath
 import shlex
 import shutil
 import subprocess
@@ -9,8 +11,6 @@ from unittest import TestCase
 from urlparse import urlparse
 from uuid import uuid4
 
-import os
-import posixpath
 from bd2k.util.iterables import concat
 from boto.s3.connection import S3Connection, Bucket
 
@@ -37,10 +37,13 @@ class RNASeqCGLTest(TestCase):
         logging.basicConfig(level=logging.INFO)
 
     def setUp(self):
-        self.input_dir = urlparse('s3://cgl-pipeline/rnaseq_cgl/ci')
+        # S3 bucket link
         self.output_dir = urlparse('s3://cgl-driver-projects/test/ci/%s' % uuid4())
-        self.sample = urlparse(self.input_dir.geturl() + '/chr6_sample.tar.gz')
-        self.bam_sample = urlparse(self.input_dir.geturl() + '/chr6.test.bam')
+        # URLs to chr6 sample
+        self.input_url = urlparse('http://courtyard.gi.ucsc.edu/~jvivian/toil-rnaseq-inputs/')
+        self.sample = urlparse(os.path.join(self.input_url.geturl(), 'continuous_integration/chr6_paired.tar.gz'))
+        self.bam_sample = urlparse(self.input_url.geturl() + 'continuous_integration/chr6.test.bam')
+        # Command setup
         self.workdir = tempfile.mkdtemp()
         jobStore = os.getenv('TOIL_SCRIPTS_TEST_JOBSTORE', os.path.join(self.workdir, 'jobstore-%s' % uuid4()))
         toilOptions = shlex.split(os.environ.get('TOIL_SCRIPTS_TEST_TOIL_OPTIONS', ''))
@@ -88,14 +91,14 @@ class RNASeqCGLTest(TestCase):
         path = os.path.join(self.workdir, 'config-toil-rnaseq.yaml')
         with open(path, 'w') as f:
             f.write(textwrap.dedent("""
-                    star-index: {input_dir}/starIndex_chr6.tar.gz
-                    kallisto-index: s3://cgl-pipeline/rnaseq_cgl/kallisto_hg38.idx
-                    rsem-ref: {input_dir}/rsem_ref_chr6.tar.gz
-                    hera-index: s3://cgl-pipeline/rnaseq_cgl/hera-index.tar.gz
+                    star-index: {input_url}/continuous_integration/starIndex_chr6.tar.gz
+                    rsem-ref: {input_url}/continuous_integration/rsem_ref_chr6.tar.gz
+                    kallisto-index: {input_url}/kallisto_hg38.idx
+                    hera-index: {input_url}/hera-index.tar.gz
                     output-dir: {output_dir}
                     max-sample-size: 2G
                     fastqc: true
-                    cutadapt:
+                    cutadapt: true
                     ssec:
                     gdc-token:
                     wiggle:
@@ -105,7 +108,7 @@ class RNASeqCGLTest(TestCase):
                     bamqc: true
                     ci-test: true
                     """[1:]).format(output_dir=self.output_dir.geturl(),
-                                    input_dir=self.input_dir.geturl()))
+                                    input_url=self.input_url.geturl()))
         return path
 
     def _generate_manifest(self, num_samples=1, bam=False):
