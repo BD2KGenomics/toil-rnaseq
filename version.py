@@ -14,5 +14,5 @@
 
 version = '4.1.1'
 
-required_versions = {'toil': '>=3.12.0',
+required_versions = {'toil': '==3.12.0',
                      'pyyaml': '>=3.11'}
